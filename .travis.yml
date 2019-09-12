@@ -1,12 +1,11 @@
 language: csharp
 mono: none
 sudo: required
-dotnet: 2.2
 dist: bionic
 addons:
   snaps:
   - name: dotnet-sdk
-    classic: true
+    confinement: classic
     channel: latest/beta
 
 script:
