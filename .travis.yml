@@ -1,6 +1,6 @@
 language: csharp
 mono: none
-sudo: false
+sudo: required
 dotnet: 2.2
 dist: bionic
 addons:
