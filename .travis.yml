@@ -1,38 +1,31 @@
 language: csharp
+dotnet: 2.2
 mono: none
-sudo: required
+sudo: false
 dist: bionic
-addons:
-  snaps:
-  - name: dotnet-sdk
-    confinement: classic
-    channel: stable
 
 script:
-  - sudo snap alias dotnet-sdk.dotnet dotnet
-  - dotnet --version
   - dotnet build -c Release -v minimal -p:WarningLevel=3
-  - dotnet test  -c Release --no-build --filter '(TestCategory!=LongRunning)&(TestCategory!=Stress)&(TestCategory!=FailureCase)'
+  - travis_wait dotnet test  -c Release --no-build --filter '(TestCategory!=LongRunning)&(TestCategory!=Stress)&(TestCategory!=FailureCase)'
   - dotnet pack  -c Release --no-build -p:NoWarn=NU5105
 
-
-deploy:
-
-
-  - on:
-      branch: master
-    provider: script
-    script:
-      - dotnet nuget push **/*.nupkg -s https://api.nuget.org/v3/index.json -k $NUGET_API_KEY
-    skip_cleanup: true
+#deploy:
 
 
-  - on:
-      branch: develop
-    provider: script
-    script:
-      - dotnet nuget push **/*.nupkg -s https://www.myget.org/F/nettopologysuite/api/v2/package -k $MYGET_API_KEY
-    skip_cleanup: true
+#  - on:
+#      branch: master
+#    provider: script
+#    script:
+#      - dotnet nuget push **/*.nupkg -s https://api.nuget.org/v3/index.json -k $NUGET_API_KEY
+#    skip_cleanup: true
+
+
+#- on:
+#      branch: develop
+#    provider: script
+#    script:
+#      - dotnet nuget push **/*.nupkg -s https://www.myget.org/F/nettopologysuite/api/v2/package -k $MYGET_API_KEY
+#    skip_cleanup: true
 
 
 env:
