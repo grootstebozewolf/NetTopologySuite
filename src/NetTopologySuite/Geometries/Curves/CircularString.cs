@@ -7,10 +7,9 @@
 //
 //   Assisted-by: Claude (Opus-4.7)
 //
-// Status: PLAYGROUND -- prototype of OGC SFA-CA CircularString on top of the
-// foundational Curve/Surface abstractions already on enhancement/curved.
-// Not for merge into develop without further design discussion -- see the PR
-// description for scope, decisions, and open questions.
+// Status: PRODUCTION -- SQL/MM / OGC CircularString first-class Geometry type
+// (structure + WKT/WKB foundation). Arc-aware Length / Distance / Envelope are
+// tracked by Category=Red oracle hooks (CurveOracleRedTests).
 
 using System;
 using System.Collections.Generic;
