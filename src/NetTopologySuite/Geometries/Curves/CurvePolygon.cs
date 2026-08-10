@@ -9,7 +9,7 @@
 //
 // Status: PRODUCTION (structure + WKT/WKB) — GEOS 3.13-class foundation.
 // Rings are Curve, never collapsed to LinearRing (F-CP). Not GEOS-current metric
-// parity for Area/Length/Distance; see Category=Red CurveOracleRedTests.
+// parity for Area/Length/Distance; see Category=Red CurveMetricsContractTests.
 
 using System;
 using System.Collections.Generic;
@@ -30,7 +30,7 @@ namespace NetTopologySuite.Geometries.Curves
     /// structural contract).
     /// <para/>
     /// Foundation <c>Area</c> / <c>Length</c> use control-polyline (chord) geometry
-    /// on curved rings; analytical arc measure is gated by oracle RED tests.
+    /// on curved rings; analytical arc measure is gated by Category=Red CurveMetricsContractTests.
     /// </remarks>
     [Serializable]
     public class CurvePolygon : Surface<Curve>, ILinearizable<Polygon>
@@ -255,7 +255,7 @@ namespace NetTopologySuite.Geometries.Curves
         /// <summary>
         /// The rings of this surface.  Returned as a <see cref="GeometryCollection"/>
         /// of <see cref="Curve"/>s for now -- a dedicated <c>MultiCurve</c> type is
-        /// gated by oracle RED tests.
+        /// gated by Category=Red CurveMetricsContractTests.
         /// </summary>
         public override Geometry Boundary
         {
@@ -354,7 +354,7 @@ namespace NetTopologySuite.Geometries.Curves
 
         /// <summary>
         /// Normalization of ring orientation and hole ordering requires orientation
-        /// of curved rings, which is gated by oracle RED tests.  This type
+        /// of curved rings, which is gated by Category=Red CurveMetricsContractTests.  This type
         /// implementation does nothing.
         /// </summary>
         public override void Normalize()

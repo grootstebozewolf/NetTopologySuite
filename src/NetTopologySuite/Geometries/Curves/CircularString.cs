@@ -10,7 +10,7 @@
 // Status: PRODUCTION (structure + WKT/WKB) — GEOS 3.13-class foundation.
 // Not GEOS-current metric parity: Length is control-polyline, Envelope is
 // control-bbox only, DistanceOp does not yet visit curves (see Category=Red
-// CurveOracleRedTests). Arc-aware Length/Envelope/Distance = later work.
+// CurveMetricsContractTests). Arc-aware Length/Envelope/Distance = later work.
 
 using System;
 using System.Collections.Generic;
