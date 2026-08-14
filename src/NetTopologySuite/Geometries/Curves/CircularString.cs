@@ -8,13 +8,13 @@
 //   Assisted-by: Claude (Opus-4.7)
 //
 // Status: PRODUCTION (structure + WKT/WKB) — GEOS 3.13-class foundation.
-// Not GEOS-current metric parity: Length is control-polyline, Envelope is
-// control-bbox only, DistanceOp does not yet visit curves (see Category=Red
-// CurveMetricsContractTests). Arc-aware Length/Envelope/Distance = later work.
+// Metrics and analytic ops (Length, Area, Envelope, IsSimple, Distance,
+// Centroid, InteriorPoint) fail closed with NotSupportedException until
+// arc-aware implementations land in a follow-up PR; Linearize() is the
+// explicit chord escape hatch.
 
 using System;
 using System.Collections.Generic;
-using NetTopologySuite.Algorithm;
 
 namespace NetTopologySuite.Geometries.Curves
 {
@@ -183,14 +183,18 @@ namespace NetTopologySuite.Geometries.Curves
         protected override Envelope ComputeEnvelopeInternal()
         {
             if (IsEmpty) return new Envelope();
-            // Conservative: enclose all control points. The true analytical
-            // envelope of an arc may extend beyond control points by up to the
-            // sagitta of the arc; a follow-up will tighten this.
-            var env = new Envelope();
-            for (int i = 0; i < _points.Count; i++)
-                env.ExpandToInclude(_points.GetCoordinate(i));
-            return env;
+            throw CurvedGeometry.NotYetSupported(this, "Envelope");
         }
+
+        /// <summary>
+        /// Hashes a locally computed control-point envelope.
+        /// </summary>
+        /// <remarks>
+        /// Base <see cref="Geometry.GetHashCode"/> reads <c>EnvelopeInternal</c>,
+        /// which now throws for non-empty curve types. Hashing is identity, not a
+        /// geometric answer; control points are EqualsExact-consistent.
+        /// </remarks>
+        public override int GetHashCode() => CurvedGeometry.HashControlEnvelope(_points);
 
         /// <inheritdoc/>
         public override bool EqualsExact(Geometry other, double tolerance)
@@ -340,6 +344,21 @@ namespace NetTopologySuite.Geometries.Curves
                 }
             }
             return Factory.CreateLineString(pts.ToArray());
+        }
+
+        /// <summary>
+        /// Tolerance-driven linearization is not implemented yet.
+        /// </summary>
+        /// <param name="arcSegmentLength">
+        /// Reserved for the maximum chord length along each arc.
+        /// </param>
+        /// <exception cref="NotSupportedException">
+        /// Always thrown until densification lands. Use <see cref="Linearize()"/>
+        /// for the explicit chord approximation.
+        /// </exception>
+        public LineString Linearize(double arcSegmentLength)
+        {
+            throw CurvedGeometry.ToleranceLinearizeNotSupported();
         }
     }
 }
