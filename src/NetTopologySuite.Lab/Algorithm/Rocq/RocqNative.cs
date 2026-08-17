@@ -2,6 +2,9 @@
 // NetTopologySuite.Lab copy of NetTopologySuite.Proofs oracle/csharp/RocqNative.cs
 // Keep in sync with that file.  Core RobustLineIntersector does not call this.
 // Check RocqNative.IsAvailable before use.
+//
+// ABI ledger: grootstebozewolf/NetTopologySuite.Proofs
+//   docs/phase5-ffi-abi.md  and  oracle/CONSUMERS.md
 // ============================================================================
 // oracle/csharp/RocqNative.cs
 // ----------------------------------------------------------------------------
@@ -167,10 +170,18 @@ namespace NetTopologySuite.Robust.Native
     }
 
     /// <summary>
-    /// Managed façade over the Coq-extracted geometry kernel.  Every method here
-    /// returns exactly what the proofs-repo oracle returns for the same inputs
-    /// (gated by oracle/gen_ffi_parity_tests.py on every build of the proofs).
+    /// Opt-in managed façade over the Coq-extracted geometry kernel
+    /// (<c>libntsrocq</c>). Every method here returns exactly what the
+    /// proofs-repo oracle returns for the same inputs (gated by
+    /// <c>oracle/gen_ffi_parity_tests.py</c> on every build of the proofs).
     /// </summary>
+    /// <remarks>
+    /// This class does not change production noding or orientation defaults.
+    /// Callers must check <see cref="IsAvailable"/> before invoking native
+    /// methods. Source of truth and ABI ledger:
+    /// <c>grootstebozewolf/NetTopologySuite.Proofs</c>
+    /// (<c>docs/phase5-ffi-abi.md</c>, <c>oracle/CONSUMERS.md</c>).
+    /// </remarks>
     public static class RocqNative
     {
         /// <summary>ABI this binding was written against (see nts_ffi.h).</summary>
