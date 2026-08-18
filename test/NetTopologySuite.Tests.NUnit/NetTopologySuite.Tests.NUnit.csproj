@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="TestData\*" Exclude="*.cs" />
+    <None Include="Algorithm\RocqRef\jts_nts_equiv_vectors.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
