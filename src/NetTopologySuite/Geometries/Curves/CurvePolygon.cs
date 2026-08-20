@@ -242,8 +242,8 @@ namespace NetTopologySuite.Geometries.Curves
         }
 
         /// <summary>
-        /// Perimeter approximated by summing ring lengths (chord-based for curved
-        /// rings).
+        /// Perimeter: sum of structural ring lengths. Circular rings use the
+        /// closed-form <see cref="CircularString.Length"/>.
         /// </summary>
         public override double Length
         {

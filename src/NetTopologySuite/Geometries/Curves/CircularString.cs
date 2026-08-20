@@ -27,10 +27,9 @@ namespace NetTopologySuite.Geometries.Curves
     /// with adjacent arcs sharing endpoints.  An empty <c>CircularString</c> has zero
     /// coordinates.
     /// <para/>
-    /// This is a prototype.  In particular, <c>Length</c> and <c>Boundary</c> currently
-    /// fall back to chord-based computations (treating the control points as a polyline)
-    /// rather than analytical arc geometry; the inherited <see cref="Curve.IsClosed"/>
-    /// semantics still apply (start equals end).
+    /// This is a prototype. <c>Length</c> is the closed-form arc sum;
+    /// <c>Boundary</c> still uses the Mod-2 endpoints. The inherited
+    /// <see cref="Curve.IsClosed"/> semantics still apply (start equals end).
     /// </remarks>
     [Serializable]
     public class CircularString : Curve, ILinearizable<LineString>
