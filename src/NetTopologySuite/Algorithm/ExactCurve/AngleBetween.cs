@@ -18,9 +18,9 @@ namespace NetTopologySuite.Algorithm.ExactCurve
     /// re-roll <c>% 2π</c> locally.
     /// Soundness: relative <c>atan2(u×v, u·v)</c> does not collapse a tiny
     /// crossing at the <c>±π</c> branch cut into a false full turn.
-        /// Performance: <see cref="SweepOf(double, double, Coordinate, Coordinate, Coordinate)"/>
-        /// is allocation-free.
-        /// Port of JTS <c>9797c2c4</c>.
+    /// Performance: <see cref="SweepOf(double, double, Coordinate, Coordinate, Coordinate)"/>
+    /// is allocation-free.
+    /// Port of JTS <c>9797c2c4</c>.
     /// </remarks>
     public static class AngleBetween
     {
