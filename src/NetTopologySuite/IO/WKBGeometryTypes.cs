@@ -58,6 +58,21 @@ namespace NetTopologySuite.IO
         WKBGeometryCollection = 7,
 
         /// <summary>
+        /// CircularString (ISO WKB type 8).
+        /// </summary>
+        WKBCircularString = 8,
+
+        /// <summary>
+        /// CompoundCurve (ISO WKB type 9).
+        /// </summary>
+        WKBCompoundCurve = 9,
+
+        /// <summary>
+        /// CurvePolygon (ISO WKB type 10).
+        /// </summary>
+        WKBCurvePolygon = 10,
+
+        /// <summary>
         /// Point with Z coordinate.
         /// </summary>
         WKBPointZ = 1001,

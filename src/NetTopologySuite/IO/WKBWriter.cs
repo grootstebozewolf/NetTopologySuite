@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 using NetTopologySuite.Geometries;
+using NetTopologySuite.Geometries.Curves;
 using NetTopologySuite.Utilities;
 
 namespace NetTopologySuite.IO
@@ -109,6 +110,15 @@ namespace NetTopologySuite.IO
                     break;
                 case "GeometryCollection":
                     geometryType = WKBGeometryTypes.WKBGeometryCollection;
+                    break;
+                case "CircularString":
+                    geometryType = WKBGeometryTypes.WKBCircularString;
+                    break;
+                case "CompoundCurve":
+                    geometryType = WKBGeometryTypes.WKBCompoundCurve;
+                    break;
+                case "CurvePolygon":
+                    geometryType = WKBGeometryTypes.WKBCurvePolygon;
                     break;
                 default:
                     Assert.ShouldNeverReachHere("Unknown geometry type:" + geom.GeometryType);
@@ -288,8 +298,14 @@ namespace NetTopologySuite.IO
         {
             if (geometry is Point point)
                 Write(point, writer, includeSRID);
+            else if (geometry is CircularString circularString)
+                WriteCircularString(circularString, writer, includeSRID);
+            else if (geometry is CompoundCurve compoundCurve)
+                WriteCompoundCurve(compoundCurve, writer, includeSRID);
             else if (geometry is LineString lineString)
                 Write(lineString, writer, includeSRID);
+            else if (geometry is CurvePolygon curvePolygon)
+                WriteCurvePolygon(curvePolygon, writer, includeSRID);
             else if (geometry is Polygon polygon)
                 Write(polygon, writer, includeSRID);
             else if (geometry is MultiPoint multiPoint)
@@ -611,8 +627,14 @@ namespace NetTopologySuite.IO
         {
             if (geometry is Point point)
                 return new byte[GetRequiredBufferSize(point, includeSRID)];
+            if (geometry is CircularString circularString)
+                return new byte[GetRequiredBufferSizeCurve(circularString, includeSRID)];
+            if (geometry is CompoundCurve compoundCurve)
+                return new byte[GetRequiredBufferSizeCurve(compoundCurve, includeSRID)];
             if (geometry is LineString lineString)
                 return new byte[GetRequiredBufferSize(lineString, includeSRID)];
+            if (geometry is CurvePolygon curvePolygon)
+                return new byte[GetRequiredBufferSizeCurve(curvePolygon, includeSRID)];
             if (geometry is Polygon polygon)
                 return new byte[GetRequiredBufferSize(polygon, includeSRID)];
             if (geometry is MultiPoint multiPoint)
@@ -666,8 +688,14 @@ namespace NetTopologySuite.IO
         {
             if (geometry is Point point)
                 return GetRequiredBufferSize(point, includeSRID);
+            if (geometry is CircularString circularString)
+                return GetRequiredBufferSizeCurve(circularString, includeSRID);
+            if (geometry is CompoundCurve compoundCurve)
+                return GetRequiredBufferSizeCurve(compoundCurve, includeSRID);
             if (geometry is LineString lineString)
                 return GetRequiredBufferSize(lineString, includeSRID);
+            if (geometry is CurvePolygon curvePolygon)
+                return GetRequiredBufferSizeCurve(curvePolygon, includeSRID);
             if (geometry is Polygon polygon)
                 return GetRequiredBufferSize(polygon, includeSRID);
             if (geometry is MultiPoint multiPoint)
@@ -847,6 +875,73 @@ namespace NetTopologySuite.IO
             int count = GetHeaderSize(includeSRID);
             count += 4;                             // NumPoints
             count += pointSize * numPoints;
+            return count;
+        }
+
+        // Maintainability: type 8 is the SQL/MM word; write CircularString.
+        // Soundness: type 3 is a LineString, not this geometry.
+        // Performance: one extra type test in the write dispatch.
+        private void WriteCircularString(CircularString circularString, BinaryWriter writer, bool includeSRID)
+        {
+            WriteHeader(writer, circularString, includeSRID);
+#pragma warning disable 618
+            Write(circularString.CoordinateSequence, true, writer);
+#pragma warning restore 618
+        }
+
+        private void WriteCompoundCurve(CompoundCurve compoundCurve, BinaryWriter writer, bool includeSRID)
+        {
+            WriteHeader(writer, compoundCurve, includeSRID);
+            writer.Write(compoundCurve.IsEmpty ? 0 : compoundCurve.Curves.Count);
+            if (compoundCurve.IsEmpty)
+                return;
+            foreach (var curve in compoundCurve.Curves)
+                Write(curve, writer, curve.SRID != compoundCurve.SRID);
+        }
+
+        private void WriteCurvePolygon(CurvePolygon curvePolygon, BinaryWriter writer, bool includeSRID)
+        {
+            WriteHeader(writer, curvePolygon, includeSRID);
+            if (curvePolygon.IsEmpty)
+            {
+                writer.Write(0);
+                return;
+            }
+            writer.Write(curvePolygon.NumInteriorRings + 1);
+            Write(curvePolygon.ExteriorRing, writer, curvePolygon.ExteriorRing.SRID != curvePolygon.SRID);
+            for (int i = 0; i < curvePolygon.NumInteriorRings; i++)
+            {
+                var hole = curvePolygon.GetInteriorRingN(i);
+                Write(hole, writer, hole.SRID != curvePolygon.SRID);
+            }
+        }
+
+        private int GetRequiredBufferSizeCurve(CircularString circularString, bool includeSRID)
+        {
+            return GetHeaderSize(includeSRID) + 4 + circularString.NumPoints * _coordinateSize;
+        }
+
+        private int GetRequiredBufferSizeCurve(CompoundCurve compoundCurve, bool includeSRID)
+        {
+            int count = GetHeaderSize(includeSRID) + 4;
+            if (compoundCurve.IsEmpty)
+                return count;
+            foreach (var curve in compoundCurve.Curves)
+                count += GetRequiredBufferSize(curve, curve.SRID != compoundCurve.SRID);
+            return count;
+        }
+
+        private int GetRequiredBufferSizeCurve(CurvePolygon curvePolygon, bool includeSRID)
+        {
+            int count = GetHeaderSize(includeSRID) + 4;
+            if (curvePolygon.IsEmpty)
+                return count;
+            count += GetRequiredBufferSize(curvePolygon.ExteriorRing, curvePolygon.ExteriorRing.SRID != curvePolygon.SRID);
+            for (int i = 0; i < curvePolygon.NumInteriorRings; i++)
+            {
+                var hole = curvePolygon.GetInteriorRingN(i);
+                count += GetRequiredBufferSize(hole, hole.SRID != curvePolygon.SRID);
+            }
             return count;
         }
 
