@@ -126,7 +126,6 @@ namespace NetTopologySuite.Algorithm.Construct
             if (CircularDisc.TryGet(polygonal, out double cx, out double cy, out double r)
                 && polygonal is Geometries.Curves.CurvePolygon)
             {
-                _certifiedDisc = true;
                 _centerPt = new Coordinate(cx, cy);
                 _radiusPt = new Coordinate(cx + r, cy);
                 _centerPoint = _factory.CreatePoint(_centerPt);
