@@ -276,20 +276,48 @@ namespace NetTopologySuite.Geometries.Curves
         public LineString Linearize() => Linearize(double.NaN);
 
         /// <summary>
-        /// Returns a chord approximation of this circular string as a
-        /// <see cref="LineString"/>.
+        /// Densifies this circular string. A non-finite tolerance still returns
+        /// the control polyline. A finite tolerance uses sagitta densify and
+        /// keeps every supplied control as an exact vertex.
         /// </summary>
-        /// <param name="arcSegmentLength">
-        /// Reserved for maximum chord length along each arc. Currently unused;
-        /// control-point chords are always returned.
-        /// </param>
+        /// <remarks>
+        /// Maintainability: keep the supplied mid-control as a vertex so
+        /// callers can match on the input coordinates after Linearize.
+        /// Soundness: cos/sin at π/2 is not (0,1); the control is the sample
+        /// that was supplied. On a sweep-angle tie the control wins.
+        /// Performance: one extra distance test per interpolated vertex.
+        /// Port of JTS <c>f6347444</c>.
+        /// </remarks>
         public LineString Linearize(double arcSegmentLength)
         {
             if (IsEmpty)
             {
                 return Factory.CreateLineString();
             }
-            return Factory.CreateLineString(_points.Copy());
+            if (double.IsNaN(arcSegmentLength) || double.IsInfinity(arcSegmentLength))
+            {
+                return Factory.CreateLineString(_points.Copy());
+            }
+            if (arcSegmentLength < 0.0)
+            {
+                throw new ArgumentException("tolerance must be non-negative: " + arcSegmentLength,
+                    nameof(arcSegmentLength));
+            }
+            var pts = new List<Coordinate>();
+            for (int i = 0; i + 2 < _points.Count; i += 2)
+            {
+                var arc = new Algorithm.ExactCurve.ExactCircularArc(
+                    _points.GetCoordinate(i),
+                    _points.GetCoordinate(i + 1),
+                    _points.GetCoordinate(i + 2));
+                var lin = (LineString)arc.ToLinear(arcSegmentLength);
+                int start = pts.Count == 0 ? 0 : 1;
+                for (int k = start; k < lin.NumPoints; k++)
+                {
+                    pts.Add(lin.GetCoordinateN(k));
+                }
+            }
+            return Factory.CreateLineString(pts.ToArray());
         }
     }
 }
