@@ -1,4 +1,5 @@
 ﻿using System;
+using NetTopologySuite.Operation.Relate;
 using RelateOpV1 = NetTopologySuite.Operation.Relate.RelateOp;
 using RelateOpV2 = NetTopologySuite.Operation.RelateNG.RelateNG;
 using RelatePredicate = NetTopologySuite.Operation.RelateNG.RelatePredicate;
@@ -419,6 +420,8 @@ namespace NetTopologySuite.Geometries
             /// </summary>
             private static IntersectionMatrix GetRelateMatrix(Geometry a, Geometry b)
             {
+                if (CurveCertifiedRelate.TryDiscExternalTouch(a, b, out var im))
+                    return im;
                 if (IsZeroLengthLine(a) || IsZeroLengthLine(b))
                     return RelateOpV2.Relate(a, b);
                 return RelateOpV1.Relate(a, b);
@@ -483,6 +486,8 @@ namespace NetTopologySuite.Geometries
 
             public override bool Touches(Geometry a, Geometry b)
             {
+                if (CurveCertifiedRelate.TryDiscExternalTouch(a, b, out var im))
+                    return im.IsTouches(a.Dimension, b.Dimension);
                 return RelateOpV2.Relate(a, b, RelatePredicate.Touches());
             }
 
@@ -493,11 +498,15 @@ namespace NetTopologySuite.Geometries
 
             public override IntersectionMatrix Relate(Geometry a, Geometry b)
             {
+                if (CurveCertifiedRelate.TryDiscExternalTouch(a, b, out var im))
+                    return im;
                 return RelateOpV2.Relate(a, b);
             }
 
             public override bool Relate(Geometry a, Geometry b, string intersectionPattern)
             {
+                if (CurveCertifiedRelate.TryDiscExternalTouch(a, b, out var im))
+                    return im.Matches(intersectionPattern);
                 return RelateOpV2.Relate(a, b, intersectionPattern);
             }
 
