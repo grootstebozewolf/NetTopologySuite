@@ -214,6 +214,29 @@ namespace NetTopologySuite.Algorithm.ExactCurve
             return OnSweep(p);
         }
 
+        /// <summary>
+        /// Contour-integral contribution <c>½ ∫(x dy − y dx)</c> of this window.
+        /// </summary>
+        public static double SignedAreaContribution(Coordinate start, Coordinate mid, Coordinate end)
+        {
+            return new ExactCircularArc(start, mid, end).SignedAreaContribution();
+        }
+
+        /// <summary>
+        /// Contour-integral contribution <c>½ ∫(x dy − y dx)</c> of this window.
+        /// </summary>
+        public double SignedAreaContribution()
+        {
+            if (!_arc)
+            {
+                return 0.5 * (_start.X * _end.Y - _end.X * _start.Y);
+            }
+            double signed = _ccw ? _sweep : -_sweep;
+            return 0.5 * (_r * _r * signed
+                + _cx * _r * (Math.Sin(_a0 + signed) - Math.Sin(_a0))
+                - _cy * _r * (Math.Cos(_a0 + signed) - Math.Cos(_a0)));
+        }
+
         /// <summary>Circular-segment area <c>r²/2 · (θ − sin θ)</c>. Zero on a chord.</summary>
         public double CircularSegmentArea()
         {
