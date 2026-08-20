@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using NetTopologySuite.Algorithm.ExactCurve;
 
 namespace NetTopologySuite.Geometries.Curves
 {
@@ -185,23 +186,59 @@ namespace NetTopologySuite.Geometries.Curves
         }
 
         /// <summary>
-        /// Area approximated by treating the control points of the rings as polyline
-        /// rings (chord-based, consistent with <see cref="CircularString"/>'s
-        /// chord-based <c>Length</c>).  For curved rings the true area differs by the
-        /// circular segments; analytical arc area is tracked in the prototype roadmap.
+        /// Area enclosed by the structural rings, so arc rings contribute the
+        /// area they actually sweep rather than the polygon through their control
+        /// points.
         /// </summary>
+        /// <remarks>
+        /// Maintainability: each window uses <see cref="ExactCircularArc.SignedAreaContribution"/>.
+        /// Soundness: control-point shoelace on r=3 is 18, not <c>9π</c>.
+        /// Performance: one closed-form term per window.
+        /// Port of JTS <c>9808dfa1</c>.
+        /// </remarks>
         public override double Area
         {
             get
             {
                 if (IsEmpty) return 0d;
-                double area = Algorithm.Area.OfRing(_shell.Coordinates);
+                double area = Math.Abs(SignedRingArea(_shell));
                 foreach (var hole in _holes)
                 {
-                    area -= Algorithm.Area.OfRing(hole.Coordinates);
+                    area -= Math.Abs(SignedRingArea(hole));
                 }
                 return area;
             }
+        }
+
+        private static double SignedRingArea(Curve ring)
+        {
+            if (ring == null || ring.IsEmpty)
+            {
+                return 0d;
+            }
+            if (ring is CompoundCurve cc)
+            {
+                double area = 0d;
+                foreach (var member in cc.Curves)
+                {
+                    area += SignedRingArea(member);
+                }
+                return area;
+            }
+            if (ring is CircularString cs && cs.NumPoints >= 3)
+            {
+                var seq = cs.CoordinateSequence;
+                double area = 0d;
+                for (int i = 0; i + 2 < seq.Count; i += 2)
+                {
+                    area += ExactCircularArc.SignedAreaContribution(
+                        seq.GetCoordinate(i),
+                        seq.GetCoordinate(i + 1),
+                        seq.GetCoordinate(i + 2));
+                }
+                return area;
+            }
+            return Algorithm.Area.OfRing(ring.Coordinates);
         }
 
         /// <summary>
