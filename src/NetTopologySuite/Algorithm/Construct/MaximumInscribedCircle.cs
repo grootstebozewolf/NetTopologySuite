@@ -113,15 +113,31 @@ namespace NetTopologySuite.Algorithm.Construct
             if (tolerance <= 0)
                 throw new ArgumentOutOfRangeException(nameof(tolerance), "Tolerance must be positive");
 
-            if (!(polygonal is IPolygonal))
-                throw new ArgumentException("Input geometry must be a Polygon or MultiPolygon");
-
             if (polygonal.IsEmpty)
                 throw new ArgumentException("Empty input geometry is not supported");
 
             _inputGeom = polygonal;
             _factory = polygonal.Factory;
             _tolerance = tolerance;
+
+            // Maintainability: disc MIC shares CircularDisc with LEC.
+            // Soundness: control-diamond MIC is 5/√2; the disc radius is 5.
+            // Performance: certified disc skips the grid.
+            if (CircularDisc.TryGet(polygonal, out double cx, out double cy, out double r)
+                && polygonal is Geometries.Curves.CurvePolygon)
+            {
+                _certifiedDisc = true;
+                _centerPt = new Coordinate(cx, cy);
+                _radiusPt = new Coordinate(cx + r, cy);
+                _centerPoint = _factory.CreatePoint(_centerPt);
+                _radiusPoint = _factory.CreatePoint(_radiusPt);
+                _centerCell = new Cell(cx, cy, 0, r);
+                return;
+            }
+
+            if (!(polygonal is IPolygonal))
+                throw new ArgumentException("Input geometry must be a Polygon or MultiPolygon");
+
             _ptLocater = new IndexedPointInAreaLocator(polygonal);
             _indexedDistance = new IndexedFacetDistance(polygonal.Boundary);
         }

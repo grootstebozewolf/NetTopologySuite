@@ -248,10 +248,23 @@ namespace NetTopologySuite.Algorithm.Construct
 
         private void Compute()
         {
-            InitBoundary();
-
             // check if already computed
             if (_centerCell != null) return;
+
+            // Maintainability: disc LEC shares CircularDisc with MIC.
+            // Soundness: convex-hull of control points is the diamond (r = 5/√2).
+            // Performance: certified disc skips the grid.
+            if (CircularDisc.TryCertifiedCircle(_obstacles, _boundary, out double cx, out double cy, out double r))
+            {
+                _centerPt = new Coordinate(cx, cy);
+                _radiusPt = new Coordinate(cx + r, cy);
+                _centerPoint = _factory.CreatePoint(_centerPt);
+                _radiusPoint = _factory.CreatePoint(_radiusPt);
+                _centerCell = new Cell(cx, cy, 0, r);
+                return;
+            }
+
+            InitBoundary();
 
             // if _boundaryPtLocater is not present then result is degenerate (represented as zero-radius circle)
             if (_boundaryPtLocater == null)
