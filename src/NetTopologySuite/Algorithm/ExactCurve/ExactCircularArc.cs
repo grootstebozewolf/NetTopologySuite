@@ -115,6 +115,13 @@ namespace NetTopologySuite.Algorithm.ExactCurve
         }
 
         /// <summary>Documented densify shim. Not used by <see cref="Length"/> or <see cref="PointAt"/>.</summary>
+        /// <remarks>
+        /// Maintainability: emit the supplied mid-control on a sweep-angle tie
+        /// so callers can match the input vertex after Linearize.
+        /// Soundness: <c>cos(π/2)</c> is not <c>(0, 1)</c>.
+        /// Performance: one extra distance test per interpolated vertex.
+        /// Port of JTS <c>f6347444</c>.
+        /// </remarks>
         public Geometry ToLinear(double tolerance)
         {
             if (tolerance < 0.0)
