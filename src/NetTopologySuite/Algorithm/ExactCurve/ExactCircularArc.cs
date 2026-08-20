@@ -5,6 +5,7 @@
 //   AI-generated portions dedicated to CC0-1.0; human curation BSD-3-Clause.
 
 using System;
+using System.Collections.Generic;
 using NetTopologySuite.Geometries;
 
 namespace NetTopologySuite.Algorithm.ExactCurve
@@ -131,15 +132,40 @@ namespace NetTopologySuite.Algorithm.ExactCurve
             {
                 delta = -delta;
             }
-            var pts = new Coordinate[segments + 1];
-            pts[0] = _start.Copy();
+            var pts = new List<Coordinate>(segments + 2) { _start.Copy() };
+            double midEps = Math.Max(1.0e-12, _r * 1.0e-9);
+            bool midEmitted = _mid.Equals2D(_start) || _mid.Equals2D(_end);
             for (int i = 1; i < segments; i++)
             {
                 double ang = _a0 + i * delta;
-                pts[i] = new Coordinate(_cx + _r * Math.Cos(ang), _cy + _r * Math.Sin(ang));
+                var pt = new Coordinate(_cx + _r * Math.Cos(ang), _cy + _r * Math.Sin(ang));
+                if (!midEmitted && pt.Distance(_mid) <= midEps)
+                {
+                    pts.Add(_mid.Copy());
+                    midEmitted = true;
+                    continue;
+                }
+                pts.Add(pt);
             }
-            pts[segments] = _end.Copy();
-            return GeometryFactory.Default.CreateLineString(pts);
+            if (!midEmitted)
+            {
+                double midSweep = AngleBetween.Travelled(_ccw,
+                    _start.X - _cx, _start.Y - _cy, _mid.X - _cx, _mid.Y - _cy);
+                int insertAt = pts.Count;
+                for (int i = 1; i < pts.Count; i++)
+                {
+                    double s = AngleBetween.Travelled(_ccw,
+                        _start.X - _cx, _start.Y - _cy, pts[i].X - _cx, pts[i].Y - _cy);
+                    if (s >= midSweep)
+                    {
+                        insertAt = i;
+                        break;
+                    }
+                }
+                pts.Insert(insertAt, _mid.Copy());
+            }
+            pts.Add(_end.Copy());
+            return GeometryFactory.Default.CreateLineString(pts.ToArray());
         }
 
         public bool ChordLeArc()
