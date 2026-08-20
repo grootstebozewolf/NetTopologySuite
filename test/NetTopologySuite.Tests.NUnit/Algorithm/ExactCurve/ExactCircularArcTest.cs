@@ -238,8 +238,11 @@ namespace NetTopologySuite.Tests.NUnit.Algorithm.ExactCurve
             }
             sw.Stop();
             long dTicks = sw.ElapsedTicks;
+            double ratio = (double)aTicks / dTicks;
+            TestContext.WriteLine("P1 Length/ToLinear ticks {0}/{1} = {2:F4}", aTicks, dTicks, ratio);
             Assert.That(sink, Is.Not.EqualTo(0.0));
-            Assert.That((double)aTicks / dTicks, Is.LessThanOrEqualTo(1.15));
+            Assert.That(ratio, Is.LessThanOrEqualTo(1.15),
+                $"P1 Length/ToLinear = {ratio:F4} (gate 1.15)");
         }
 
         private static ExactCircularArc RandomArc(Random rnd)
