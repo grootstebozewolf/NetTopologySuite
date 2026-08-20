@@ -130,10 +130,33 @@ namespace NetTopologySuite.Geometries.Curves
         public override OgcGeometryType OgcGeometryType => OgcGeometryType.CircularString;
 
         /// <summary>
-        /// Length approximated by summing arc-chord lengths.  Analytical arc-length
-        /// computation is tracked in the prototype roadmap.
+        /// True arc length, summed over each 3-control window.
         /// </summary>
-        public override double Length => Algorithm.Length.OfLine(_points);
+        /// <remarks>
+        /// Maintainability: each window is <see cref="ExactCircularArc.LengthOf"/>.
+        /// Soundness: chord walk on r=2 is <c>8√2</c>, not <c>4π</c>.
+        /// Performance: one hypot plus one multiply per window.
+        /// Port of JTS <c>9808dfa1</c>.
+        /// </remarks>
+        public override double Length
+        {
+            get
+            {
+                if (_points.Count < 3)
+                {
+                    return 0d;
+                }
+                double total = 0d;
+                for (int i = 0; i + 2 < _points.Count; i += 2)
+                {
+                    total += Algorithm.ExactCurve.ExactCircularArc.LengthOf(
+                        _points.GetCoordinate(i),
+                        _points.GetCoordinate(i + 1),
+                        _points.GetCoordinate(i + 2));
+                }
+                return total;
+            }
+        }
 
         /// <summary>
         /// The boundary of a curve per the Mod-2 rule: empty when the curve is empty
