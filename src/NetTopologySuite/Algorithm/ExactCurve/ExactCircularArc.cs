@@ -217,6 +217,12 @@ namespace NetTopologySuite.Algorithm.ExactCurve
         /// <summary>
         /// Contour-integral contribution <c>½ ∫(x dy − y dx)</c> of this window.
         /// </summary>
+        /// <remarks>
+        /// Maintainability: CurvePolygon.Area sums one term per 3-control window.
+        /// Soundness: shoelace on r=3 control points is 18, not <c>9π</c>.
+        /// Performance: one closed-form term; the static overload allocates one window.
+        /// Port of JTS <c>9808dfa1</c>.
+        /// </remarks>
         public static double SignedAreaContribution(Coordinate start, Coordinate mid, Coordinate end)
         {
             return new ExactCircularArc(start, mid, end).SignedAreaContribution();
