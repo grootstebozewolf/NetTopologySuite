@@ -39,16 +39,18 @@ namespace NetTopologySuite.Tests.NUnit.Algorithm.Construct
         [Test]
         public void TestKiteWithHole()
         {
-            CheckCircle("POLYGON ((100 0, 200 200, 300 200, 300 100, 100 0), (200 150, 200 100, 260 100, 200 150))",
-                0.01, 257.47, 157.47, 42.52);
+            const string wkt = "POLYGON ((100 0, 200 200, 300 200, 300 100, 100 0), (200 150, 200 100, 260 100, 200 150))";
+            CheckCircle(wkt, 0.01, 257.47, 157.47, 42.52);
+            CheckCircleAutoTol(wkt, 0.001, 257.47, 157.47, 42.529);
         }
 
         [Test]
         public void TestDoubleKite()
         {
-            CheckCircle(
-                "MULTIPOLYGON (((150 200, 100 150, 150 100, 250 150, 150 200)), ((400 250, 300 150, 400 50, 560 150, 400 250)))",
-                0.01, 411.38, 149.99, 78.75);
+            const string wkt =
+                "MULTIPOLYGON (((150 200, 100 150, 150 100, 250 150, 150 200)), ((400 250, 300 150, 400 50, 560 150, 400 250)))";
+            CheckCircle(wkt, 0.01, 411.38, 149.99, 78.75);
+            CheckCircleAutoTol(wkt, 0.001, 411.392, 149.971, 78.7378);
         }
 
         [Test, Description("Invalid polygon collapsed to a line")]
@@ -116,10 +118,21 @@ namespace NetTopologySuite.Tests.NUnit.Algorithm.Construct
             CheckCircle(Read(wkt), tolerance, x, y, expectedRadius);
         }
 
+        private void CheckCircleAutoTol(string wkt, double tolerance,
+            double x, double y, double expectedRadius)
+        {
+            CheckCircle(new MaximumInscribedCircle(Read(wkt)), 2 * tolerance, x, y, expectedRadius);
+        }
+
         private void CheckCircle(Geometry geom, double tolerance,
             double x, double y, double expectedRadius)
         {
-            var mic = new MaximumInscribedCircle(geom, tolerance);
+            CheckCircle(new MaximumInscribedCircle(geom, tolerance), tolerance, x, y, expectedRadius);
+        }
+
+        private void CheckCircle(MaximumInscribedCircle mic, double tolerance,
+            double x, double y, double expectedRadius)
+        {
             var centerPoint = mic.GetCenter();
             var centerPt = centerPoint.Coordinate;
             var expectedCenter = new Coordinate(x, y);
@@ -132,7 +145,6 @@ namespace NetTopologySuite.Tests.NUnit.Algorithm.Construct
             CheckEqualXY("Radius line center point: ", centerPt, radiusLine.GetCoordinateN(0));
             var radiusPt = mic.GetRadiusPoint().Coordinate;
             CheckEqualXY("Radius line endpoint point: ", radiusPt, radiusLine.GetCoordinateN(1));
-
         }
     }
 }
