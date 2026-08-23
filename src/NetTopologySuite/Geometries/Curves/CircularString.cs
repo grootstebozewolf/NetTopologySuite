@@ -15,6 +15,7 @@
 using System;
 using System.Collections.Generic;
 using NetTopologySuite.Algorithm;
+using NetTopologySuite.Algorithm.ExactCurve;
 
 namespace NetTopologySuite.Geometries.Curves
 {
@@ -43,8 +44,8 @@ namespace NetTopologySuite.Geometries.Curves
         /// <param name="points">The coordinate sequence of control points</param>
         /// <param name="factory">The geometry factory</param>
         /// <exception cref="ArgumentException">
-        /// If the sequence has fewer than 3 points or an even number of points
-        /// (must be 0 or odd and at least 3).
+        /// If the sequence has fewer than 3 points, or an even leftover that is
+        /// not the closed 4-control form <c>CIRCULARSTRING(A,B,C,A)</c>.
         /// </exception>
         public CircularString(CoordinateSequence points, GeometryFactory factory) : base(factory)
         {
@@ -52,23 +53,53 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 points = factory.CoordinateSequenceFactory.Create(0, Ordinates.XY);
             }
-            if (points.Count != 0)
+            if (points.Count != 0 && !IsValidControlCount(points))
             {
-                if (points.Count < 3)
-                {
-                    throw new ArgumentException(
-                        "A non-empty CircularString must have at least 3 control points " +
-                        "(start, on-arc, end of the first arc).", nameof(points));
-                }
-                if (points.Count % 2 == 0)
-                {
-                    throw new ArgumentException(
-                        "A CircularString must have an odd number of control points " +
-                        "(2n + 1 points encode n arcs).", nameof(points));
-                }
+                throw new ArgumentException(
+                    "A CircularString must have an odd number of control points >= 3, " +
+                    "or be the closed 4-control form CIRCULARSTRING(A,B,C,A).", nameof(points));
             }
             _points = points;
         }
+
+        /// <summary>
+        /// V-CS / #86: ISO/IEC 13249-3 wants an odd control count ≥ 3.
+        /// Closed <c>CIRCULARSTRING(A,B,C,A)</c> is the 4-control full-circle
+        /// exception (complementary close is implicit; no leftover mid stored).
+        /// Port of JTS 2b56b1a4.
+        /// </summary>
+        public static bool IsValidControlCount(CoordinateSequence seq)
+        {
+            if (seq == null || seq.Count == 0)
+            {
+                return true;
+            }
+            int n = seq.Count;
+            if (n < 3)
+            {
+                return false;
+            }
+            if ((n & 1) == 1)
+            {
+                return true;
+            }
+            if (n != 4)
+            {
+                return false;
+            }
+            var a = seq.GetCoordinate(0);
+            var b = seq.GetCoordinate(1);
+            var c = seq.GetCoordinate(2);
+            var a2 = seq.GetCoordinate(3);
+            if (!a.Equals2D(a2))
+            {
+                return false;
+            }
+            return ExactCircularArc.TryCircumcircle(a, b, c, out _, out _, out _);
+        }
+
+        /// <inheritdoc/>
+        public override bool IsValid => IsValidControlCount(_points);
 
         /// <summary>The control points of this <c>CircularString</c>.</summary>
         public CoordinateSequence CoordinateSequence => _points;

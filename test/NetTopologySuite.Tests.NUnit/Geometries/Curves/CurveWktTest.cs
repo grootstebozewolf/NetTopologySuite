@@ -20,6 +20,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
     {
         [TestCase("CIRCULARSTRING (0 0, 1 1, 2 0)", typeof(CircularString))]
         [TestCase("CIRCULARSTRING (0 0, 1 1, 2 0, 3 -1, 4 0)", typeof(CircularString))]
+        [TestCase("CIRCULARSTRING (-5 0, 0 5, 5 0, -5 0)", typeof(CircularString))]
         [TestCase("CIRCULARSTRING EMPTY", typeof(CircularString))]
         [TestCase("COMPOUNDCURVE ((0 0, 1 0), CIRCULARSTRING (1 0, 2 1, 3 0), (3 0, 4 0))", typeof(CompoundCurve))]
         [TestCase("COMPOUNDCURVE (CIRCULARSTRING (0 0, 1 1, 2 0), (2 0, 3 0))", typeof(CompoundCurve))]
@@ -99,6 +100,23 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         {
             Assert.Throws<ArgumentException>(() =>
                 new WKTReader().Read("CIRCULARSTRING (0 0, 1 1)"));
+        }
+
+        [Test]
+        public void ReadRejectsOpenEvenCircularStringLeftover()
+        {
+            Assert.Throws<ArgumentException>(() =>
+                new WKTReader().Read("CIRCULARSTRING (0 0, 1 1, 2 0, 3 1)"));
+        }
+
+        [Test]
+        public void ReadAcceptsClosedFourPointCircle()
+        {
+            var g = new WKTReader().Read("CIRCULARSTRING (-5 0, 0 5, 5 0, -5 0)");
+            Assert.That(g, Is.InstanceOf<CircularString>());
+            Assert.That(g.NumPoints, Is.EqualTo(4));
+            Assert.That(((CircularString)g).IsClosed, Is.True);
+            Assert.That(g.IsValid, Is.True);
         }
 
         [Test]
