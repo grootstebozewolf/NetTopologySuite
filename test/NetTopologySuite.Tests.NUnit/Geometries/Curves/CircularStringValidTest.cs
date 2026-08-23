@@ -2,6 +2,7 @@
 // AI-drafted, human-reviewed.  Assisted-by: Cursor Grok 4.6
 // Port of JTS 2b56b1a4 CircularStringValidTest (V-CS / #86).
 
+using System;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.Geometries.Curves;
 using NetTopologySuite.IO;
