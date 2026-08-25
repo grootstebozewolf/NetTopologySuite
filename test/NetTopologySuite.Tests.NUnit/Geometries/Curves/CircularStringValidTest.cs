@@ -69,6 +69,27 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
+        public void FactoryRewritesAbaToFiveTokenCircle()
+        {
+            var factory = new GeometryFactory();
+            var seq = factory.CoordinateSequenceFactory.Create(new[]
+            {
+                new Coordinate(0, 0),
+                new Coordinate(0, 2),
+                new Coordinate(0, 0)
+            });
+            var g = factory.CreateCircularString(seq);
+            Assert.That(g.GeometryType, Is.EqualTo("CircularString"));
+            Assert.That(g.NumPoints, Is.EqualTo(5));
+            Assert.That(g.Coordinates[1].X, Is.EqualTo(1.0).Within(1e-12));
+            Assert.That(g.Coordinates[1].Y, Is.EqualTo(1.0).Within(1e-12));
+            Assert.That(g.Coordinates[2].X, Is.EqualTo(0.0).Within(1e-12));
+            Assert.That(g.Coordinates[2].Y, Is.EqualTo(2.0).Within(1e-12));
+            Assert.That(g.Coordinates[3].X, Is.EqualTo(-1.0).Within(1e-12));
+            Assert.That(g.Coordinates[3].Y, Is.EqualTo(1.0).Within(1e-12));
+        }
+
+        [Test]
         public void DiameterOnRampRewritesToFiveTokenCircle()
         {
             var g = new WKTReader().Read(OnRamp);

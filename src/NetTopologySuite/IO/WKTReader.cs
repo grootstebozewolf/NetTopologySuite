@@ -1038,9 +1038,7 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         private Geometries.Curves.CircularString ReadCircularStringText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags)
         {
             var sequence = GetCoordinateSequence(factory, tokens, ordinateFlags, 0, false);
-            sequence = Geometries.Curves.CircularString.OnAddOrRead(
-                sequence, factory.CoordinateSequenceFactory);
-            return new Geometries.Curves.CircularString(sequence, factory);
+            return factory.CreateCircularString(sequence);
         }
 
         /// <summary>

@@ -410,6 +410,29 @@ namespace NetTopologySuite.Geometries
             return new LineString(coordinates, this);
         }
 
+        /// <summary>
+        /// Creates a <c>CircularString</c>. <c>(A, B, A)</c> with distinct
+        /// A, B is a JTS on-ramp (not ISO/IEC 13249-3) and is rewritten to
+        /// <c>(A, C, B, D, A)</c> at θ − π/2, B, θ + π/2.
+        /// Port of JTS 81c2e996.
+        /// </summary>
+        public virtual Curves.CircularString CreateCircularString(Coordinate[] coordinates)
+        {
+            return CreateCircularString(coordinates != null ? CoordinateSequenceFactory.Create(coordinates) : null);
+        }
+
+        /// <summary>
+        /// Creates a <c>CircularString</c>. <c>(A, B, A)</c> with distinct
+        /// A, B is a JTS on-ramp (not ISO/IEC 13249-3) and is rewritten to
+        /// <c>(A, C, B, D, A)</c> at θ − π/2, B, θ + π/2.
+        /// Port of JTS 81c2e996.
+        /// </summary>
+        public virtual Curves.CircularString CreateCircularString(CoordinateSequence coordinates)
+        {
+            var seq = Curves.CircularString.OnAddOrRead(coordinates, CoordinateSequenceFactory);
+            return new Curves.CircularString(seq, this);
+        }
+
         /// <summary>Creates an empty LinearRing</summary>
         /// <returns>An empty LinearRing</returns>
         public LinearRing CreateLinearRing()
