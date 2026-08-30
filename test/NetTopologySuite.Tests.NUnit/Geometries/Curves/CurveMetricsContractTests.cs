@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Intentional-fail hooks for arc-aware Distance / Length / Envelope on the
-// SQL/MM curve foundation. These pin expected contracts and stay red until
+// Intentional-fail hooks for arc-aware Distance / Envelope on the SQL/MM
+// curve foundation. These pin expected contracts and stay red until
 // arc-aware metrics land; today the members throw NotSupportedException
 // instead of returning control-polyline / control-bbox stubs.
+// Length flipped green (ticket 615-d) and lives in CurveMetricsTests.
 //
 // Assisted-by: xAI Grok
 
@@ -17,9 +18,10 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
 {
     /// <summary>
     /// Intentional-fail contract tests for arc-aware curve metrics.
-    /// Assert SQL/MM / GEOS-quality Distance, Length, and Envelope behaviour;
+    /// Assert SQL/MM / GEOS-quality Distance and Envelope behaviour;
     /// they stay red until arc-aware metrics land (today they fail with
     /// <see cref="NotSupportedException"/> rather than wrong chord values).
+    /// Length flipped green (ticket 615-d): see <see cref="CurveMetricsTests"/>.
     /// Excluded from default CI via <c>FailureCase</c> (same pattern as other known-fail fixtures).
     /// </summary>
     [Category("FailureCase")]
@@ -91,19 +93,6 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
 
             Assert.That(double.IsFinite(d), Is.True);
             Assert.That(d, Is.EqualTo(0.0).Within(1e-12));
-        }
-
-        /// <summary>
-        /// P1 — Length is arc measure r·θ, not the control-polyline.
-        /// Unit semicircle: expected length is π.
-        /// </summary>
-        [Test]
-        public void Red_Length_UnitSemicircle_IsPi()
-        {
-            var arc = UnitSemicircle();
-
-            Assert.That(arc.Length, Is.EqualTo(Math.PI).Within(1e-9),
-                "Expected arc-aware length: unit semicircle is π, not 2√2 control chords.");
         }
 
         /// <summary>

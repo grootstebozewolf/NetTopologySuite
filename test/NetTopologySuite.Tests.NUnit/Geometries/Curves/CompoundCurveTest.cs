@@ -90,16 +90,17 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void LengthFailsClosed()
+        public void LengthIsComponentSum()
         {
+            // Flipped from LengthFailsClosed by ticket 615-d: Length is the sum
+            // of exact component lengths. Value contracts live in CurveMetricsTests.
             var line = Line((0, 0), (1, 0));
             var arc = Arc((1, 0), (2, 1), (3, 0));
             var mixed = new CompoundCurve(new Curve[] { line, arc }, _factory);
-            Assert.That(() => mixed.Length, Throws.TypeOf<NotSupportedException>());
+            Assert.That(mixed.Length, Is.EqualTo(1.0 + Math.PI).Within(1e-9));
 
             var allLinear = new CompoundCurve(new Curve[] { Line((0, 0), (1, 0)), Line((1, 0), (2, 0)) }, _factory);
-            Assert.That(() => allLinear.Length, Throws.TypeOf<NotSupportedException>(),
-                "Unconditional cut: all-LineString CompoundCurve still throws.");
+            Assert.That(allLinear.Length, Is.EqualTo(2.0).Within(1e-12));
         }
 
         [Test]
