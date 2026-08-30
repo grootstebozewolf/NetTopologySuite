@@ -232,14 +232,35 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         [Test]
         public void IsSimple_DegenerateClosedSingleSegment_StaysFailClosed()
         {
-            // p0 == p2 zeroes the orientation cross, so the triple is
-            // degenerate (§7.3.1 Desc 6 marks the closed single segment
+            // p0 == p2 is the closed single segment (§7.3.1 Desc 6 marks it
             // invalid); no unchecked verdict.
             var degenerate = Make((1, 0), (0, 1), (1, 0));
             Assert.That(() => degenerate.IsSimple, Throws.TypeOf<NotSupportedException>());
 
             var allEqual = Make((1, 1), (1, 1), (1, 1));
             Assert.That(() => allEqual.IsSimple, Throws.TypeOf<NotSupportedException>());
+        }
+
+        [Test]
+        public void IsSimple_DegenerateClosedWithOverflowingCross_StaysFailClosed()
+        {
+            // Review-caught (615-h rung 1): with these coordinates the
+            // floating-point orientation cross is NaN (Inf · 0), not 0, so an
+            // implementation that trusted "non-collinear ⇒ endpoints
+            // distinct" answered an unchecked true here. Endpoint equality is
+            // decided first precisely for this case.
+            var overflow = Make((-1e308, 0), (1e308, 1), (-1e308, 0));
+            Assert.That(() => overflow.IsSimple, Throws.TypeOf<NotSupportedException>());
+            Assert.That(() => overflow.IsRing, Throws.TypeOf<NotSupportedException>());
+        }
+
+        [Test]
+        public void IsSimple_NearlyClosedSingleSegment_IsTrue()
+        {
+            // Boundary of the decided region: p0 ≈ p2 but not equal — the
+            // sweep is just under 2π, still injective, endpoints distinct.
+            var nearlyClosed = Make((1, 0), (0, 1), (1, 1e-13));
+            Assert.That(nearlyClosed.IsSimple, Is.True);
         }
 
         [Test]
