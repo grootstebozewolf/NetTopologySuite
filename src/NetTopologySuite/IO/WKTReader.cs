@@ -1112,15 +1112,30 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         private static Ordinates GetComponentOrdinateFlags(TokenStream tokens, string word, string typeName)
         {
             string suffix = word.Substring(typeName.Length);
+            Ordinates tag;
             if (suffix.Length == 0)
-                return GetNextOrdinateFlags(tokens);
-            if (suffix.Equals(WKTConstants.ZM, StringComparison.OrdinalIgnoreCase))
-                return Ordinates.XYZM;
-            if (suffix.Equals(WKTConstants.Z, StringComparison.OrdinalIgnoreCase))
-                return Ordinates.XYZ;
-            if (suffix.Equals(WKTConstants.M, StringComparison.OrdinalIgnoreCase))
-                return Ordinates.XYM;
-            return Ordinates.XY;
+                tag = GetNextOrdinateFlags(tokens);
+            else if (suffix.Equals(WKTConstants.ZM, StringComparison.OrdinalIgnoreCase))
+                tag = Ordinates.XYZM;
+            else if (suffix.Equals(WKTConstants.Z, StringComparison.OrdinalIgnoreCase))
+                tag = Ordinates.XYZ;
+            else if (suffix.Equals(WKTConstants.M, StringComparison.OrdinalIgnoreCase))
+                tag = Ordinates.XYM;
+            else
+                return Ordinates.XY;
+
+            if (tag != Ordinates.XY)
+            {
+                // A second tag after the first (CIRCULARSTRINGZ M ..., or
+                // CIRCULARSTRING Z M ...) would otherwise be discarded
+                // silently by the tag-skip in GetNextEmptyOrOpener.
+                var trailing = GetNextOrdinateFlags(tokens);
+                if (trailing != Ordinates.XY)
+                    throw new ParseException(
+                        $"{typeName} component carries two <z m> tags ('{OrdinateTag(tag)}' then '{OrdinateTag(trailing)}'): " +
+                        "the ISO/IEC 13249-3 5.1.67 grammar admits at most one <z m> per tagged text");
+            }
+            return tag;
         }
 
         /// <summary>
