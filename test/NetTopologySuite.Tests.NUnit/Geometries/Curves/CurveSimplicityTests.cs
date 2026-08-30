@@ -258,17 +258,127 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(cs.IsSimple, Is.False);
         }
 
-        [Test]
-        public void MultiCurveAndMultiSurface_StayFailClosed()
-        {
-            var mc = new MultiCurve(new Curve[] { Cs((0, 0), (1, 1), (2, 0)) }, _factory);
-            Assert.That(() => mc.IsSimple, Throws.TypeOf<NotSupportedException>());
+        // --- MultiCurve / MultiSurface (ticket 615-h rung 4, #639):
+        // §4.2.25 / §10.3.1 Desc 4 — an ST_MultiCurve is simple iff all
+        // elements are simple and any two elements intersect only at points
+        // in the boundaries of BOTH elements (Mod-2: endpoints of open
+        // members; a closed member has no boundary, so any touch on it
+        // refutes simplicity). MultiSurface follows the classical polygonal
+        // reading: every element's rings simple. ---------------------------
 
-            var ms = new MultiSurface(new Geometry[]
+        [Test]
+        public void MultiCurve_DisjointMembers_IsSimple()
+        {
+            var mc = new MultiCurve(new Curve[]
+            {
+                Cs((0, 0), (1, 1), (2, 0)),
+                Line((5, 0), (6, 0)),
+            }, _factory);
+            Assert.That(mc.IsSimple, Is.True);
+        }
+
+        [Test]
+        public void MultiCurve_OpenMembersTouchingAtSharedEndpoint_IsSimple()
+        {
+            // (1,0) is a boundary point of both open members — permitted.
+            var mc = new MultiCurve(new Curve[]
+            {
+                Line((0, 0), (1, 0)),
+                Cs((1, 0), (2, 1), (3, 0)),
+            }, _factory);
+            Assert.That(mc.IsSimple, Is.True);
+        }
+
+        [Test]
+        public void MultiCurve_EndpointOnOtherMembersInterior_IsNotSimple()
+        {
+            // (1,1) is the line's boundary but the arc's INTERIOR — the
+            // contact is not in the boundaries of both.
+            var mc = new MultiCurve(new Curve[]
+            {
+                Cs((0, 0), (1, 1), (2, 0)),
+                Line((1, 1), (1, 3)),
+            }, _factory);
+            Assert.That(mc.IsSimple, Is.False);
+        }
+
+        [Test]
+        public void MultiCurve_TouchOnClosedMember_IsNotSimple()
+        {
+            // The closed member's boundary is empty, so no touch on it can
+            // be permitted — even at the other member's endpoint.
+            var mc = new MultiCurve(new Curve[]
+            {
+                Cs((0, 0), (1, 1), (2, 0), (1, -1), (0, 0)),
+                Line((2, 0), (3, 0)),
+            }, _factory);
+            Assert.That(mc.IsSimple, Is.False);
+        }
+
+        [Test]
+        public void MultiCurve_NonSimpleMember_IsNotSimple()
+        {
+            var mc = new MultiCurve(new Curve[]
+            {
+                Cs((0, 0), (1, 1), (2, 2), (1.5, 1.5), (1, 1)),
+            }, _factory);
+            Assert.That(mc.IsSimple, Is.False);
+        }
+
+        [Test]
+        public void MultiCurve_MemberOverlap_IsNotSimple()
+        {
+            var mc = new MultiCurve(new Curve[]
+            {
+                Line((0, 0), (2, 0)),
+                Line((1, 0), (3, 0)),
+            }, _factory);
+            Assert.That(mc.IsSimple, Is.False);
+        }
+
+        [Test]
+        public void MultiCurve_EmptyAndDegenerate()
+        {
+            Assert.That(new MultiCurve(null, _factory).IsSimple, Is.True, "empty");
+            var degenerate = new MultiCurve(new Curve[] { Cs((0, 0), (1, 1), (0, 0)) }, _factory);
+            Assert.That(() => degenerate.IsSimple, Throws.TypeOf<NotSupportedException>());
+        }
+
+        [Test]
+        public void MultiSurface_RingsDecide()
+        {
+            var simple = new MultiSurface(new Geometry[]
             {
                 new CurvePolygon(Cs((0, 0), (1, 1), (2, 0), (1, -1), (0, 0)), _factory),
+                _factory.CreatePolygon(new[]
+                {
+                    new Coordinate(10, 10), new Coordinate(12, 10),
+                    new Coordinate(12, 12), new Coordinate(10, 10),
+                }),
             }, _factory);
-            Assert.That(() => ms.IsSimple, Throws.TypeOf<NotSupportedException>());
+            Assert.That(simple.IsSimple, Is.True);
+
+            var bowtieRing = Line((0, 0), (2, 2), (2, 0), (0, 2), (0, 0));
+            var notSimple = new MultiSurface(new Geometry[]
+            {
+                new CurvePolygon(bowtieRing, _factory),
+            }, _factory);
+            Assert.That(notSimple.IsSimple, Is.False);
+        }
+
+        [Test]
+        public void IsSimple_NonFiniteCoordinate_StaysFailClosed()
+        {
+            // Review-added hardening (#639): NaN used to slip through the
+            // chain-of-1 shortcut and past the conditioning guard
+            // (eps·NaN² > tol is false) into empty-contact trues. IsSimple
+            // now fail-closes on non-finite coordinates, matching the
+            // lane's no-unchecked-verdict rule (IsValid is definite-false).
+            var single = Cs((0, 0), (1, double.NaN), (2, 0));
+            Assert.That(() => single.IsSimple, Throws.TypeOf<NotSupportedException>());
+
+            var multi = Cs((0, 0), (1, 1), (2, 0), (3, double.NaN), (4, 0));
+            Assert.That(() => multi.IsSimple, Throws.TypeOf<NotSupportedException>());
         }
 
         [Test]

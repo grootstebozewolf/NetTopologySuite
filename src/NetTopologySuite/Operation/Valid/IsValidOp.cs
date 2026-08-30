@@ -206,6 +206,17 @@ namespace NetTopologySuite.Operation.Valid
                     return IsValidGeometry(pl);
                 case MultiPolygon mpl:
                     return IsValidGeometry(mpl);
+                case Geometries.Curves.MultiCurve _:
+                case Geometries.Curves.MultiSurface _:
+                    // 615-h rung 4 (NetTopologySuite.Proofs issue 639): these
+                    // carry arc-aware verdicts on the type itself
+                    // (CurveValidity, via the override) — the classical
+                    // GeometryCollection walk under-checks them (it misses
+                    // the ISO/IEC 13249-3 surface-pair conditions), so it
+                    // must never be taken. Definite-false verdicts from this
+                    // path do not populate ValidationError; the undecided
+                    // residues throw, named.
+                    return g.IsValid;
                 case GeometryCollection gc:
                     return IsValidGeometry(gc);
                 default:

@@ -163,14 +163,15 @@ namespace NetTopologySuite.Operation.Valid
             if (geom.IsEmpty) return true;
             if (CurvedGeometry.IsCurvedType(geom))
             {
-                // Arc-aware simplicity is decided for CircularString,
-                // CompoundCurve and CurvePolygon (the 615-h lane in
-                // NetTopologySuite.Proofs); their overrides throw for the
-                // kernel's fail-closed residues. MultiCurve / MultiSurface
-                // stay fail-closed pending issue #639 there.
+                // Arc-aware simplicity is decided for all curve-branch types
+                // (the 615-h lane in NetTopologySuite.Proofs, rungs 2-4);
+                // their overrides throw for the kernel's fail-closed
+                // residues.
                 if (geom is Geometries.Curves.CircularString
                     || geom is Geometries.Curves.CompoundCurve
-                    || geom is Geometries.Curves.CurvePolygon)
+                    || geom is Geometries.Curves.CurvePolygon
+                    || geom is Geometries.Curves.MultiCurve
+                    || geom is Geometries.Curves.MultiSurface)
                 {
                     return geom.IsSimple;
                 }
