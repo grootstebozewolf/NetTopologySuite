@@ -32,6 +32,13 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             return new CircularString(_factory.CoordinateSequenceFactory.Create(coords), _factory);
         }
 
+        private LineString Line(params (double x, double y)[] pts)
+        {
+            var coords = new Coordinate[pts.Length];
+            for (int i = 0; i < pts.Length; i++) coords[i] = new Coordinate(pts[i].x, pts[i].y);
+            return _factory.CreateLineString(coords);
+        }
+
         [Test]
         public void IsValid_DescSixViolatingArc_IsDefiniteFalse()
         {
@@ -133,13 +140,131 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         [Test]
         public void IsValid_CleanCurvePolygon_StillFailsClosed()
         {
-            // The ring is closed and (since rung 3) provably simple, but the
-            // ring-pair conditions (§8.2.1 Desc 11–14) are still undecided —
-            // fail-closed naming them, never an unchecked true.
+            // The ring is closed and (since rung 3) provably simple, and
+            // (since rung 4) with a single ring there is no ring PAIR to
+            // refute — but the remaining polygon conditions (§8.2.1
+            // Desc 12–14: no spikes/cuts, connected interior) are still
+            // undecided. Fail-closed naming them, never an unchecked true.
             var ring = Cs((0, 0), (2, 2), (4, 0), (2, -2), (0, 0));
             var cp = new CurvePolygon(ring, _factory);
             Assert.That(() => cp.IsValid,
-                Throws.TypeOf<NotSupportedException>().With.Message.Contains("615-h").And.Message.Contains("Desc 11"));
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("615-h").And.Message.Contains("Desc 12"));
+        }
+
+        [Test]
+        public void IsValid_CurvePolygonHoleCrossingShell_IsDefiniteFalse()
+        {
+            // §8.2.1 Desc 11: the boundary of two rings may intersect in at
+            // most one point. These two circular rings CROSS (two proper
+            // intersection points) — provably invalid via the pair kernel,
+            // and pinned against the oracle's HOLES_DISJOINT lane
+            // (NOT_DISJOINT CROSS golden).
+            var shell = Cs((0, 0), (2, 2), (4, 0), (2, -2), (0, 0));
+            var hole = Cs((3, 1), (5, 3), (7, 1), (5, -1), (3, 1));
+            var cp = new CurvePolygon(shell, new Curve[] { hole }, _factory);
+            Assert.That(cp.IsValid, Is.False);
+        }
+
+        [Test]
+        public void IsValid_CurvePolygonRingsTouchingAtOnePoint_StaysFailClosed()
+        {
+            // Internally tangent circles: shell centre (2,0) r=2, hole centre
+            // (3,0) r=1, touching only at (4,0). ONE contact point passes
+            // Desc 11 — but whether that tangency creates a spike/cut or
+            // disconnects the interior (Desc 12–14) is still undecided, so
+            // this stays fail-closed rather than returning an unchecked true.
+            var shell = Cs((0, 0), (2, 2), (4, 0), (2, -2), (0, 0));
+            var hole = Cs((2, 0), (3, 1), (4, 0), (3, -1), (2, 0));
+            var cp = new CurvePolygon(shell, new Curve[] { hole }, _factory);
+            Assert.That(() => cp.IsValid,
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("615-h").And.Message.Contains("Desc 12"));
+        }
+
+        [Test]
+        public void IsValid_MultiCurveAllMembersValid_IsCheckedTrue()
+        {
+            // 615-h rung 4 (#639): §10.1.1 Desc 10 — a geometry collection is
+            // well formed only if all elements are; ST_MultiCurve adds no
+            // further validity constraint of its own (simplicity is Desc 4's
+            // ST_IsSimple obligation, not a validity one). All members are
+            // rung-decidable, so the whole value is checked true.
+            var mc = new MultiCurve(new Curve[]
+            {
+                Line((5, 0), (6, 0)),
+                Cs((0, 0), (1, 1), (2, 0)),
+            }, _factory);
+            Assert.That(mc.IsValid, Is.True);
+        }
+
+        [Test]
+        public void IsValid_MultiCurveWithDescSixDirtyMember_IsDefiniteFalse()
+        {
+            // §10.1.1 Desc 10: one provably ill-formed member (Desc-6-dirty
+            // arc) makes the collection definite false.
+            var mc = new MultiCurve(new Curve[]
+            {
+                Cs((0, 0), (1, 1), (0, 0)),
+            }, _factory);
+            Assert.That(mc.IsValid, Is.False);
+        }
+
+        [Test]
+        public void IsValid_MultiSurfaceWithInvalidElement_IsDefiniteFalse()
+        {
+            // §10.1.1 Desc 10 propagation: a CurvePolygon with a provably
+            // non-simple (bowtie) ring is definite false, so the MultiSurface
+            // holding it is too.
+            var bowtie = Line((0, 0), (2, 2), (2, 0), (0, 2), (0, 0));
+            var ms = new MultiSurface(new Geometry[]
+            {
+                new CurvePolygon(bowtie, _factory),
+            }, _factory);
+            Assert.That(ms.IsValid, Is.False);
+        }
+
+        [Test]
+        public void IsValid_MultiSurfaceOverlappingClassicalElements_StaysFailClosed()
+        {
+            // The rung-3-demonstrated silent-true hole: two overlapping
+            // classical squares as a MultiSurface answered TRUE through
+            // IsValidOp's GeometryCollection arm, where the same pair as a
+            // MultiPolygon answers false. §4.2.27 says element interiors
+            // shall not intersect; that interiors-disjoint check is not
+            // implemented yet, so the honest answer is a fail-closed throw —
+            // never the old unchecked true.
+            var a = _factory.CreatePolygon(new[]
+            {
+                new Coordinate(0, 0), new Coordinate(4, 0), new Coordinate(4, 4),
+                new Coordinate(0, 4), new Coordinate(0, 0),
+            });
+            var b = _factory.CreatePolygon(new[]
+            {
+                new Coordinate(2, 2), new Coordinate(6, 2), new Coordinate(6, 6),
+                new Coordinate(2, 6), new Coordinate(2, 2),
+            });
+            var ms = new MultiSurface(new Geometry[] { a, b }, _factory);
+            Assert.That(() => ms.IsValid,
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("615-h"));
+        }
+
+        [Test]
+        public void IsValid_MultiSurfaceBoundaryOverlapElements_IsDefiniteFalse()
+        {
+            // §4.2.27: element boundaries may intersect at a finite number of
+            // POINTS — a shared 1-D arc is provably too much. The first
+            // element's shell is the full circle; the second's is the upper
+            // semicircle closed by its diameter, so the two boundaries share
+            // the entire upper semicircle.
+            var circle = new CurvePolygon(
+                Cs((0, 0), (1, 1), (2, 0), (1, -1), (0, 0)), _factory);
+            var halfDisc = new CurvePolygon(
+                new CompoundCurve(new Curve[]
+                {
+                    Cs((0, 0), (1, 1), (2, 0)),
+                    Line((2, 0), (0, 0)),
+                }, _factory), _factory);
+            var ms = new MultiSurface(new Geometry[] { circle, halfDisc }, _factory);
+            Assert.That(ms.IsValid, Is.False);
         }
 
         [Test]

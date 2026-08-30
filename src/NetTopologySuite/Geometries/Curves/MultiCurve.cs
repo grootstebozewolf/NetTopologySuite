@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Status: PRODUCTION (structure + WKT/WKB) — GEOS / ISO WKB type 11.
-// Metrics and analytic ops (Length, Area, Envelope, IsSimple, Distance,
-// Centroid, InteriorPoint) fail closed with NotSupportedException until
-// arc-aware implementations land in a follow-up PR; Linearize() is the
-// explicit chord escape hatch.
+// IsSimple and IsValid are arc-aware (ISO/IEC 13249-3 §10.3.1 Desc 4 /
+// §10.1.1 Desc 10; NetTopologySuite.Proofs #615 ticket 615-h rung 4, #639),
+// with the kernel's fail-closed residues named in the throws. The remaining
+// metrics and analytic ops (Length, Envelope, Distance, Centroid,
+// InteriorPoint) fail closed with NotSupportedException until arc-aware
+// implementations land; Linearize() is the explicit chord escape hatch.
 // Assisted-by: xAI Grok
 
 using System;
@@ -106,6 +108,34 @@ namespace NetTopologySuite.Geometries.Curves
                 copy[i] = (Curve)GetGeometryN(i).Copy();
             return new MultiCurve(copy, Factory);
         }
+
+        /// <summary>
+        /// Arc-aware simplicity (§4.2.25 / §10.3.1 Desc 4; ticket 615-h
+        /// rung 4, #639): simple iff every member is simple and any two
+        /// members meet only at points in the boundaries of BOTH members
+        /// (Mod-2: the endpoints of an open member; a closed member has no
+        /// boundary). Fail-closed residues are the kernel's, named in the
+        /// throws.
+        /// </summary>
+        public override bool IsSimple
+        {
+            get
+            {
+                if (IsEmpty)
+                    return true;
+                return CurveSimplicity.IsSimple(this);
+            }
+        }
+
+        /// <summary>
+        /// Arc-aware validity (§10.1.1 Desc 10; ticket 615-h rung 4, #639):
+        /// definite <c>false</c> when a member provably violates an
+        /// implemented ISO/IEC 13249-3 rule, checked <c>true</c> otherwise —
+        /// element well-formedness is the collection's complete validity
+        /// obligation (§10.3.1 Desc 4's inter-member condition defines
+        /// ST_IsSimple, not validity).
+        /// </summary>
+        public override bool IsValid => CurveValidity.IsValid(this);
 
         /// <summary>
         /// Arc-aware length is not implemented yet. Empty is 0; otherwise throws,

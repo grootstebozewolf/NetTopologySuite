@@ -7,7 +7,8 @@
 //
 // Arc-aware simplicity over the ISO/IEC 13249-3 loci (§4.2.4 over §7.3.1
 // Desc 8; NetTopologySuite.Proofs #615, ticket 615-h — rung 2 #630 for
-// CircularString, rung 3 #634 for CompoundCurve and CurvePolygon rings).
+// CircularString, rung 3 #634 for CompoundCurve and CurvePolygon rings,
+// rung 4 #639 for MultiCurve and MultiSurface).
 // A chain of segments is simple iff no two segment loci meet outside the
 // permitted shared vertices: consecutive segments may share exactly their
 // connecting vertex, and a closed chain may additionally share its start/end
@@ -21,11 +22,20 @@
 // OPEN chain permits no first/last-segment contact — the oracle lane always
 // models a ring.
 //
+// A MultiCurve is simple iff every member is simple AND any two members
+// meet only at points in the boundaries of BOTH members (§4.2.25 / §10.3.1
+// Desc 4; Mod-2 boundary: the endpoints of an open member, nothing for a
+// closed one — so any touch on a closed member refutes simplicity). A
+// MultiSurface follows the polygonal reading: every element's rings are
+// simple (§4.2.27 makes MultiSurface simplicity definitional; the reading
+// is pinned in the research doc §2).
+//
 // Fail-closed residues, named in the throws: a degenerate closed arc segment
-// (start == end — Desc-6-invalid, its locus is not a decidable arc), the
-// nearly-cocircular ambiguity band, and the large-circumradius conditioning
-// guard (see CircularArcGeometry.SegmentPairContacts). MultiCurve /
-// MultiSurface simplicity are the next rung (issue #639).
+// (start == end — Desc-6-invalid, its locus is not a decidable arc), a
+// non-finite control coordinate (no locus at all; IsValid is definite-false
+// there), the nearly-cocircular ambiguity band, and the large-circumradius
+// conditioning guard (see CircularArcGeometry.SegmentPairContacts) — the
+// exactness upgrades are the 615-h continuation, issue #641.
 
 using System.Collections.Generic;
 
@@ -33,8 +43,9 @@ namespace NetTopologySuite.Geometries.Curves
 {
     /// <summary>
     /// Simplicity verdicts for <see cref="CircularString"/>,
-    /// <see cref="CompoundCurve"/> and <see cref="CurvePolygon"/> rings over
-    /// the arc/chord loci; see
+    /// <see cref="CompoundCurve"/>, <see cref="CurvePolygon"/> rings,
+    /// <see cref="MultiCurve"/> and <see cref="MultiSurface"/> over the
+    /// arc/chord loci; see
     /// <see cref="CircularArcGeometry.SegmentPairContacts"/> for the pair
     /// kernel.
     /// </summary>
@@ -81,25 +92,105 @@ namespace NetTopologySuite.Geometries.Curves
         public static bool IsSimple(CompoundCurve cc)
         {
             var chain = new List<ChainSegment>();
-            foreach (var component in cc.Curves)
+            AppendCurve(cc, cc, chain);
+            return IsSimpleChain(cc, chain, cc.IsClosed);
+        }
+
+        /// <summary>
+        /// The simplicity verdict for a non-empty <see cref="MultiCurve"/>
+        /// (615-h rung 4, #639): §4.2.25 / §10.3.1 Desc 4 — simple iff every
+        /// member is simple AND any two members intersect only at points in
+        /// the boundaries of BOTH members. Under the Mod-2 boundary rule an
+        /// open member's boundary is its two endpoints and a closed member's
+        /// boundary is empty, so any contact on a closed member refutes
+        /// simplicity. Empty members contribute nothing.
+        /// </summary>
+        public static bool IsSimple(MultiCurve mc)
+        {
+            var chains = new List<List<ChainSegment>>();
+            var closed = new List<bool>();
+            for (int m = 0; m < mc.NumGeometries; m++)
             {
-                switch (component)
+                var member = (Curve)mc.GetGeometryN(m);
+                if (member.IsEmpty)
+                    continue;
+                var chain = new List<ChainSegment>();
+                AppendCurve(mc, member, chain);
+                if (!IsSimpleChain(member, chain, member.IsClosed))
+                    return false;
+                chains.Add(chain);
+                closed.Add(member.IsClosed);
+            }
+
+            var contacts = new List<Coordinate>();
+            for (int a = 0; a < chains.Count; a++)
+            {
+                for (int b = a + 1; b < chains.Count; b++)
                 {
-                    case CircularString cs:
-                        AppendCircularString(cc, cs.CoordinateSequence, chain);
-                        break;
-                    case LineString ls:
-                        AppendLineString(ls.CoordinateSequence, chain);
-                        break;
-                    default:
-                        // The constructor admits only LineString and
-                        // CircularString components (nested compounds are
-                        // spliced flat) — anything else is fail-closed.
-                        throw CurvedGeometry.NotYetSupported(cc,
-                            $"IsSimple with a component of type {component.GeometryType}");
+                    var chainA = chains[a];
+                    var chainB = chains[b];
+                    for (int i = 0; i < chainA.Count; i++)
+                    {
+                        for (int j = 0; j < chainB.Count; j++)
+                        {
+                            contacts.Clear();
+                            CheckedPairContacts(mc, chainA[i], chainB[j],
+                                $"members {a} and {b} (segments {i} and {j})",
+                                contacts, out bool overlap);
+                            if (overlap)
+                                return false;
+                            foreach (var contact in contacts)
+                            {
+                                // Permitted only at a point in the boundary
+                                // of BOTH members; a closed member has none.
+                                if (closed[a] || closed[b])
+                                    return false;
+                                if (!MatchesEndpoint(contact, chainA) ||
+                                    !MatchesEndpoint(contact, chainB))
+                                    return false;
+                            }
+                        }
+                    }
                 }
             }
-            return IsSimpleChain(cc, chain, cc.IsClosed);
+            return true;
+        }
+
+        /// <summary>
+        /// The simplicity verdict for a non-empty <see cref="MultiSurface"/>
+        /// (615-h rung 4, #639): the polygonal reading — every element's
+        /// rings are simple (§4.2.27 makes MultiSurface simplicity
+        /// definitional; the classical machinery reads it as ring
+        /// simplicity, and the arc-aware verdict follows that reading —
+        /// pinned in the research doc §2).
+        /// </summary>
+        public static bool IsSimple(MultiSurface ms)
+        {
+            for (int e = 0; e < ms.NumGeometries; e++)
+            {
+                switch (ms.GetGeometryN(e))
+                {
+                    case CurvePolygon cp:
+                        for (int i = -1; i < cp.NumInteriorRings; i++)
+                        {
+                            var ring = i < 0 ? cp.ExteriorRing : cp.GetInteriorRingN(i);
+                            if (ring != null && !RingIsSimple(ring))
+                                return false;
+                        }
+                        break;
+                    case Polygon p:
+                        if (!p.IsSimple) // classical IsSimpleOp: ring simplicity
+                            return false;
+                        break;
+                    case Geometry other when other.IsEmpty:
+                        break;
+                    case Geometry other:
+                        // The constructor admits only Polygon and CurvePolygon.
+                        throw CurvedGeometry.NotYetSupported(ms,
+                            $"IsSimple with an element of type {other.GeometryType}");
+                }
+            }
+            return true;
         }
 
         /// <summary>
@@ -120,8 +211,78 @@ namespace NetTopologySuite.Geometries.Curves
             }
         }
 
+        /// <summary>
+        /// All distinct contact points between two rings' loci (615-h rung 4,
+        /// #639 — the §8.2.1 Desc 11 count and the §4.2.27 boundary
+        /// condition both consume this): <paramref name="overlap"/> reports a
+        /// shared 1-D piece (decided without enumerating points); otherwise
+        /// <paramref name="contacts"/> receives the tolerance-deduplicated
+        /// contact points — a tangency reported by several adjacent segment
+        /// pairs counts once. Kernel residues throw, named.
+        /// </summary>
+        internal static void RingPairContacts(
+            Geometry owner, Curve ringA, Curve ringB,
+            List<Coordinate> contacts, out bool overlap)
+        {
+            var chainA = new List<ChainSegment>();
+            var chainB = new List<ChainSegment>();
+            AppendCurve(owner, ringA, chainA);
+            AppendCurve(owner, ringB, chainB);
+            overlap = false;
+            var pair = new List<Coordinate>();
+            for (int i = 0; i < chainA.Count; i++)
+            {
+                for (int j = 0; j < chainB.Count; j++)
+                {
+                    pair.Clear();
+                    CheckedPairContacts(owner, chainA[i], chainB[j],
+                        $"ring-pair segments {i} and {j}", pair, out bool segOverlap);
+                    if (segOverlap)
+                    {
+                        overlap = true;
+                        return;
+                    }
+                    foreach (var contact in pair)
+                    {
+                        if (!ContainsMatch(contacts, contact))
+                            contacts.Add(contact);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Appends <paramref name="curve"/>'s segments to
+        /// <paramref name="chain"/>: arcs keep their control triples,
+        /// LineStrings contribute Desc-8b chords, compounds concatenate their
+        /// components. Fail-closed on anything else.
+        /// </summary>
+        private static void AppendCurve(Geometry owner, Curve curve, List<ChainSegment> chain)
+        {
+            switch (curve)
+            {
+                case CircularString cs:
+                    AppendCircularString(owner, cs.CoordinateSequence, chain);
+                    break;
+                case CompoundCurve cc:
+                    // Intake splices nested compounds flat, so this recursion
+                    // is one level deep for constructed values; a
+                    // serialization-bypass nest still terminates.
+                    foreach (var component in cc.Curves)
+                        AppendCurve(owner, component, chain);
+                    break;
+                case LineString ls:
+                    AppendLineString(owner, ls.CoordinateSequence, chain);
+                    break;
+                default:
+                    throw CurvedGeometry.NotYetSupported(owner,
+                        $"a segment chain for a component of type {curve.GeometryType}");
+            }
+        }
+
         private static void AppendCircularString(Geometry owner, CoordinateSequence seq, List<ChainSegment> chain)
         {
+            RequireFinite(owner, seq);
             int segCount = (seq.Count - 1) / 2;
             for (int s = 0; s < segCount; s++)
             {
@@ -135,8 +296,9 @@ namespace NetTopologySuite.Geometries.Curves
             }
         }
 
-        private static void AppendLineString(CoordinateSequence seq, List<ChainSegment> chain)
+        private static void AppendLineString(Geometry owner, CoordinateSequence seq, List<ChainSegment> chain)
         {
+            RequireFinite(owner, seq);
             for (int i = 0; i + 1 < seq.Count; i++)
             {
                 var a = seq.GetCoordinate(i);
@@ -167,22 +329,8 @@ namespace NetTopologySuite.Geometries.Curves
                 for (int j = i + 1; j < chain.Count; j++)
                 {
                     contacts.Clear();
-                    var result = CircularArcGeometry.SegmentPairContacts(
-                        chain[i].Start, chain[i].Mid, chain[i].End,
-                        chain[j].Start, chain[j].Mid, chain[j].End,
-                        contacts, out bool overlap);
-                    if (result == CircularArcGeometry.SegmentPairResult.AmbiguousCocircular)
-                        throw CurvedGeometry.NotYetSupported(owner,
-                            $"IsSimple for nearly cocircular segments {i} and {j} — their circumcircles are too close " +
-                            "to distinguish from one circle at double precision, but not exactly equal; refusing to " +
-                            "guess between interval overlap and radical-line intersection (the 615-h lane, " +
-                            "NetTopologySuite.Proofs issue #639)");
-                    if (result == CircularArcGeometry.SegmentPairResult.IllConditioned)
-                        throw CurvedGeometry.NotYetSupported(owner,
-                            $"IsSimple for segments {i} and {j} — a circumradius is too large relative to the " +
-                            "coordinate scale for a double-precision contact decision (the r² error would swamp " +
-                            "the match tolerance); exact arithmetic is the way to widen this (the 615-h lane, " +
-                            "NetTopologySuite.Proofs issue #639)");
+                    CheckedPairContacts(owner, chain[i], chain[j],
+                        $"segments {i} and {j}", contacts, out bool overlap);
                     if (overlap)
                         return false;
                     foreach (var contact in contacts)
@@ -193,6 +341,68 @@ namespace NetTopologySuite.Geometries.Curves
                 }
             }
             return true;
+        }
+
+        /// <summary>
+        /// The pair kernel with the fail-closed residues turned into named
+        /// throws — <paramref name="what"/> says which pair, the message says
+        /// why the decision is refused and where the lane continues.
+        /// </summary>
+        private static void CheckedPairContacts(
+            Geometry owner, ChainSegment a, ChainSegment b, string what,
+            List<Coordinate> contacts, out bool overlap)
+        {
+            var result = CircularArcGeometry.SegmentPairContacts(
+                a.Start, a.Mid, a.End, b.Start, b.Mid, b.End,
+                contacts, out overlap);
+            if (result == CircularArcGeometry.SegmentPairResult.AmbiguousCocircular)
+                throw CurvedGeometry.NotYetSupported(owner,
+                    $"a contact decision for nearly cocircular {what} — their circumcircles are too close " +
+                    "to distinguish from one circle at double precision, but not exactly equal; refusing to " +
+                    "guess between interval overlap and radical-line intersection (the 615-h lane, " +
+                    "NetTopologySuite.Proofs issue #641)");
+            if (result == CircularArcGeometry.SegmentPairResult.IllConditioned)
+                throw CurvedGeometry.NotYetSupported(owner,
+                    $"a contact decision for {what} — a circumradius is too large relative to the " +
+                    "coordinate scale for a double-precision contact decision (the r² error would swamp " +
+                    "the match tolerance); exact arithmetic is the way to widen this (the 615-h lane, " +
+                    "NetTopologySuite.Proofs issue #641)");
+        }
+
+        /// <summary>
+        /// Non-finite coordinates carry no locus: every downstream contact
+        /// decision would be an unchecked guess (NaN even slips past the
+        /// conditioning guard, whose comparison is false for NaN), so the
+        /// chain build fail-closes here. IsValid is definite-false for the
+        /// same value — this guard only keeps IsSimple honest.
+        /// </summary>
+        private static void RequireFinite(Geometry owner, CoordinateSequence seq)
+        {
+            for (int i = 0; i < seq.Count; i++)
+            {
+                double x = seq.GetX(i), y = seq.GetY(i);
+                if (double.IsNaN(x) || double.IsInfinity(x) || double.IsNaN(y) || double.IsInfinity(y))
+                    throw CurvedGeometry.NotYetSupported(owner,
+                        $"a simplicity decision with a non-finite control coordinate (index {i}); " +
+                        "IsValid is definite-false for this value");
+            }
+        }
+
+        /// <summary>Does <paramref name="contact"/> match either endpoint of the chain?</summary>
+        private static bool MatchesEndpoint(Coordinate contact, List<ChainSegment> chain)
+        {
+            return Matches(contact, chain[0].Start)
+                || Matches(contact, chain[chain.Count - 1].End);
+        }
+
+        private static bool ContainsMatch(List<Coordinate> contacts, Coordinate candidate)
+        {
+            foreach (var existing in contacts)
+            {
+                if (Matches(candidate, existing))
+                    return true;
+            }
+            return false;
         }
 
         private static bool IsPermitted(

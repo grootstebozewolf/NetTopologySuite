@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Status: PRODUCTION (structure + WKT/WKB) — GEOS / ISO WKB type 12.
-// Metrics and analytic ops (Length, Area, Envelope, IsSimple, Distance,
-// Centroid, InteriorPoint) fail closed with NotSupportedException until
-// arc-aware implementations land in a follow-up PR; Linearize() is the
-// explicit chord escape hatch.
+// IsSimple is arc-aware (ISO/IEC 13249-3 §4.2.27's definitional reading:
+// every element's rings simple) and IsValid is arc-aware partial (element
+// propagation, per-element ring conditions, cross-element boundary overlap;
+// the interiors-disjoint condition fail-closes naming issue #641) —
+// NetTopologySuite.Proofs #615 ticket 615-h rung 4, #639. The remaining
+// metrics and analytic ops (Length, Area, Envelope, Distance, Centroid,
+// InteriorPoint) fail closed with NotSupportedException until arc-aware
+// implementations land; Linearize() is the explicit chord escape hatch.
 // Assisted-by: xAI Grok
 
 using System;
@@ -83,6 +87,33 @@ namespace NetTopologySuite.Geometries.Curves
                 copy[i] = GetGeometryN(i).Copy();
             return new MultiSurface(copy, Factory);
         }
+
+        /// <summary>
+        /// Arc-aware simplicity (§4.2.27; ticket 615-h rung 4, #639): the
+        /// polygonal reading — simple iff every element's rings are simple
+        /// (the clause makes MultiSurface simplicity definitional; see
+        /// <see cref="CurveSimplicity"/>). Fail-closed residues are the
+        /// kernel's, named in the throws.
+        /// </summary>
+        public override bool IsSimple
+        {
+            get
+            {
+                if (IsEmpty)
+                    return true;
+                return CurveSimplicity.IsSimple(this);
+            }
+        }
+
+        /// <summary>
+        /// Arc-aware validity, partial (§10.1.1 Desc 10, §8.2.1, §4.2.27;
+        /// ticket 615-h rung 4, #639): definite <c>false</c> when an element
+        /// provably violates an implemented rule or two element boundaries
+        /// share a 1-D piece; a value passing everything throws naming the
+        /// undecided interiors-disjoint condition — never an unchecked
+        /// <c>true</c>.
+        /// </summary>
+        public override bool IsValid => CurveValidity.IsValid(this);
 
         /// <summary>
         /// Arc-aware length is not implemented yet. Empty is 0; otherwise throws.
