@@ -121,18 +121,57 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void RejectsEmptyComponents()
-        {
-            Assert.Throws<ArgumentException>(() =>
-                new CompoundCurve(new Curve[] { _factory.CreateLineString() }, _factory));
-        }
-
-        [Test]
         public void RejectsNonContiguousComponents()
         {
             Assert.Throws<ArgumentException>(() =>
                 new CompoundCurve(
                     new Curve[] { Line((0, 0), (1, 0)), Line((2, 0), (3, 0)) },
+                    _factory));
+        }
+
+        [Test]
+        public void EmptyComponentsAreDroppedAtIntake()
+        {
+            // The spec forbids only null components (§7.10.1 Desc 5) and is
+            // silent on empty ones; an empty component contributes nothing to
+            // the value's point set, so intake drops it (ADR-0005: conform at
+            // the boundary, normalize inside; ticket 615-c).
+            var cc = new CompoundCurve(
+                new Curve[]
+                {
+                    Line((0, 0), (1, 0)),
+                    _factory.CreateLineString(),
+                    Line((1, 0), (2, 0)),
+                },
+                _factory);
+
+            Assert.That(cc.Curves.Count, Is.EqualTo(2));
+            Assert.That(cc.NumPoints, Is.EqualTo(3));
+            Assert.That(cc.AsText(), Is.EqualTo("COMPOUNDCURVE ((0 0, 1 0), (1 0, 2 0))"));
+        }
+
+        [Test]
+        public void AllEmptyComponentsYieldTheEmptyValue()
+        {
+            var emptyArc = new CircularString(
+                _factory.CoordinateSequenceFactory.Create(0, Ordinates.XY), _factory);
+            var cc = new CompoundCurve(new Curve[] { emptyArc }, _factory);
+
+            Assert.That(cc.IsEmpty, Is.True);
+            Assert.That(cc.Curves.Count, Is.EqualTo(0));
+            Assert.That(cc.AsText(), Is.EqualTo("COMPOUNDCURVE EMPTY"));
+        }
+
+        [Test]
+        public void ContiguityIsCheckedAcrossDroppedEmptyComponents()
+        {
+            // Dropping an empty component must not open a contiguity hole:
+            // the surviving neighbours still have to join.
+            var emptyArc = new CircularString(
+                _factory.CoordinateSequenceFactory.Create(0, Ordinates.XY), _factory);
+            Assert.Throws<ArgumentException>(() =>
+                new CompoundCurve(
+                    new Curve[] { Line((0, 0), (1, 0)), emptyArc, Line((5, 5), (6, 5)) },
                     _factory));
         }
 

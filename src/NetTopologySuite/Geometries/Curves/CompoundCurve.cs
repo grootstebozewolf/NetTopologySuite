@@ -51,14 +51,24 @@ namespace NetTopologySuite.Geometries.Curves
         /// <param name="curves">
         /// The component curves, in traversal order. A <c>CompoundCurve</c> component
         /// is spliced into the flat list (its own components are flat by construction,
-        /// so the splice is depth-1).
+        /// so the splice is depth-1); an empty component contributes nothing to the
+        /// value's point set and is dropped.
         /// </param>
         /// <param name="factory">The geometry factory</param>
         /// <exception cref="ArgumentException">
-        /// If a component is <c>null</c> or empty, or if a component does not start
-        /// at the end point of its predecessor (checked on the flattened sequence,
-        /// so splice boundaries are contiguous too).
+        /// If a component is <c>null</c>, or if a component does not start at the
+        /// end point of its predecessor (checked on the flattened sequence, so
+        /// splice boundaries -- and neighbours of dropped empties -- join too).
         /// </exception>
+        /// <remarks>
+        /// Intake enforces representability only (ADR-0005 in
+        /// NetTopologySuite.Proofs): null components are forbidden by ISO/IEC
+        /// 13249-3 §7.10.1 Desc 5; contiguity is §7.10.1 Desc 7 / §4.2.13, and
+        /// without it the value's traversal is not even well defined. The spec is
+        /// silent on empty components, so they are normalized away rather than
+        /// rejected. Every further ISO "shall" belongs to arc-aware
+        /// <c>ST_IsValid</c>, not this constructor.
+        /// </remarks>
         public CompoundCurve(Curve[] curves, GeometryFactory factory) : base(factory)
         {
             if (curves == null || curves.Length == 0)
@@ -71,13 +81,15 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 if (curves[i] == null)
                 {
+                    // §7.10.1 Desc 5: components shall not be null.
                     throw new ArgumentException(
                         "A CompoundCurve must not contain null components.", nameof(curves));
                 }
                 if (curves[i].IsEmpty)
                 {
-                    throw new ArgumentException(
-                        "A CompoundCurve must not contain empty components.", nameof(curves));
+                    // Spec-silent (only null is forbidden): an empty component
+                    // adds nothing to the point set -- drop it (ticket 615-c).
+                    continue;
                 }
                 if (curves[i] is CompoundCurve nested)
                 {
@@ -90,6 +102,9 @@ namespace NetTopologySuite.Geometries.Curves
             }
             for (int i = 1; i < flat.Count; i++)
             {
+                // §7.10.1 Desc 7 / §4.2.13: end point of each curve coincides
+                // with the start point of the next (2D, matching ST_IsClosed's
+                // default reading, §4.2.4.1 item 5).
                 var previousEnd = flat[i - 1].EndPoint.Coordinate;
                 var currentStart = flat[i].StartPoint.Coordinate;
                 if (!previousEnd.Equals2D(currentStart))

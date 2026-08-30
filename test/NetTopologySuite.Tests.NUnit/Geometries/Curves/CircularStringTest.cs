@@ -88,6 +88,17 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
+        public void IntakeAcceptsDescSixViolations()
+        {
+            // Intake is representability only (ADR-0005, ticket 615-c): a
+            // segment whose end coincides with its start violates ISO/IEC
+            // 13249-3 §7.3.1 Desc 6 but still CONSTRUCTS -- flagging it is
+            // arc-aware IsValid's job (ticket 615-g), not the constructor's.
+            var cs = Make((0, 0), (1, 1), (0, 0));
+            Assert.That(cs.NumArcs, Is.EqualTo(1));
+        }
+
+        [Test]
         public void LengthIsExactOverTheArcLocus()
         {
             // Flipped from LengthFailsClosed by ticket 615-d: Length is the

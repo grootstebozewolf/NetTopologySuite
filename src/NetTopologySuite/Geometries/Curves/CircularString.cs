@@ -55,6 +55,12 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 points = factory.CoordinateSequenceFactory.Create(0, Ordinates.XY);
             }
+            // Intake enforces representability only (ADR-0005 in
+            // NetTopologySuite.Proofs): the 0-or-odd->=3 count shape below is
+            // ISO/IEC 13249-3 §7.3.1 Desc 7 (2n+1 points encode n arcs) --
+            // without it the value cannot even say which arcs exist. Every
+            // further ISO "shall" (e.g. per-segment start != end, Desc 6)
+            // belongs to arc-aware ST_IsValid (ticket 615-g), not here.
             if (points.Count != 0)
             {
                 if (points.Count < 3)
