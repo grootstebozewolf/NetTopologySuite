@@ -25,8 +25,13 @@ namespace NetTopologySuite.Geometries.Curves
     /// component starts at the end point of its predecessor.
     /// </summary>
     /// <remarks>
-    /// Nested <c>CompoundCurve</c> components are rejected, keeping the component
-    /// list flat (matching SQL/MM and common implementations).
+    /// Nested <c>CompoundCurve</c> components are accepted -- ISO/IEC 13249-3
+    /// §7.10.1 admits every <c>ST_Curve</c> subtype as a component -- and are
+    /// spliced into the flat component list on construction: the value's point
+    /// set is unchanged and component enumeration reports the spliced sequence
+    /// (normalization, not restriction; PostGIS behaves the same way). See
+    /// ADR-0005 in NetTopologySuite.Proofs: conform at the boundary, normalize
+    /// inside.
     /// <para/>
     /// Metrics and analytic ops fail closed with <see cref="NotSupportedException"/>
     /// until arc-aware implementations land; <see cref="Linearize()"/> is the explicit
@@ -41,11 +46,16 @@ namespace NetTopologySuite.Geometries.Curves
         /// <summary>
         /// Initializes a new instance of the <see cref="CompoundCurve"/> class.
         /// </summary>
-        /// <param name="curves">The component curves, in traversal order</param>
+        /// <param name="curves">
+        /// The component curves, in traversal order. A <c>CompoundCurve</c> component
+        /// is spliced into the flat list (its own components are flat by construction,
+        /// so the splice is depth-1).
+        /// </param>
         /// <param name="factory">The geometry factory</param>
         /// <exception cref="ArgumentException">
-        /// If a component is <c>null</c>, empty, or a <c>CompoundCurve</c> itself, or
-        /// if a component does not start at the end point of its predecessor.
+        /// If a component is <c>null</c> or empty, or if a component does not start
+        /// at the end point of its predecessor (checked on the flattened sequence,
+        /// so splice boundaries are contiguous too).
         /// </exception>
         public CompoundCurve(Curve[] curves, GeometryFactory factory) : base(factory)
         {
@@ -54,6 +64,7 @@ namespace NetTopologySuite.Geometries.Curves
                 _curves = new Curve[0];
                 return;
             }
+            var flat = new List<Curve>();
             for (int i = 0; i < curves.Length; i++)
             {
                 if (curves[i] == null)
@@ -66,28 +77,29 @@ namespace NetTopologySuite.Geometries.Curves
                     throw new ArgumentException(
                         "A CompoundCurve must not contain empty components.", nameof(curves));
                 }
-                if (curves[i] is CompoundCurve)
+                if (curves[i] is CompoundCurve nested)
                 {
-                    throw new ArgumentException(
-                        "A CompoundCurve must not contain nested CompoundCurve components.",
-                        nameof(curves));
+                    flat.AddRange(nested.Curves);
                 }
-                if (i > 0)
+                else
                 {
-                    var previousEnd = curves[i - 1].EndPoint.Coordinate;
-                    var currentStart = curves[i].StartPoint.Coordinate;
-                    if (!previousEnd.Equals2D(currentStart))
-                    {
-                        throw new ArgumentException(
-                            "The components of a CompoundCurve must be contiguous: component " + i +
-                            " starts at " + currentStart + " but its predecessor ends at " + previousEnd + ".",
-                            nameof(curves));
-                    }
+                    flat.Add(curves[i]);
                 }
             }
-            // Defensive copy: Normalize reverses and rewrites this array in place.
-            _curves = new Curve[curves.Length];
-            Array.Copy(curves, _curves, curves.Length);
+            for (int i = 1; i < flat.Count; i++)
+            {
+                var previousEnd = flat[i - 1].EndPoint.Coordinate;
+                var currentStart = flat[i].StartPoint.Coordinate;
+                if (!previousEnd.Equals2D(currentStart))
+                {
+                    throw new ArgumentException(
+                        "The components of a CompoundCurve must be contiguous: flattened component " + i +
+                        " starts at " + currentStart + " but its predecessor ends at " + previousEnd + ".",
+                        nameof(curves));
+                }
+            }
+            // Fresh array: Normalize reverses and rewrites this array in place.
+            _curves = flat.ToArray();
         }
 
         /// <summary>
@@ -393,8 +405,9 @@ namespace NetTopologySuite.Geometries.Curves
                 case LineString lineString:
                     return lineString;
                 default:
-                    // Defensive: constructor rejects nested CompoundCurves; other
-                    // Curve subtypes should linearize via control coordinates.
+                    // Defensive: the constructor splices nested CompoundCurves flat,
+                    // so no component is compound here; other Curve subtypes
+                    // linearize via control coordinates.
                     return component.Factory.CreateLineString(component.Coordinates);
             }
         }

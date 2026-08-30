@@ -136,11 +136,37 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void RejectsNestedCompoundCurves()
+        public void FlattensNestedCompoundCurveComponents()
         {
-            var inner = new CompoundCurve(new Curve[] { Line((0, 0), (1, 0)) }, _factory);
+            // ISO/IEC 13249-3 §7.10.1 admits every ST_Curve subtype as a component;
+            // a nested CompoundCurve is spliced into the flat list (ADR-0005).
+            var inner = new CompoundCurve(
+                new Curve[] { Line((1, 0), (2, 0)), Arc((2, 0), (3, 1), (4, 0)) }, _factory);
+            var outer = new CompoundCurve(
+                new Curve[] { Line((0, 0), (1, 0)), inner }, _factory);
+
+            Assert.That(outer.Curves.Count, Is.EqualTo(3));
+            Assert.That(outer.Curves[0], Is.InstanceOf<LineString>());
+            Assert.That(outer.Curves[1], Is.InstanceOf<LineString>());
+            Assert.That(outer.Curves[2], Is.InstanceOf<CircularString>());
+            Assert.That(outer.StartPoint.Coordinate, Is.EqualTo(new Coordinate(0, 0)));
+            Assert.That(outer.EndPoint.Coordinate, Is.EqualTo(new Coordinate(4, 0)));
+        }
+
+        [Test]
+        public void FlatteningEnforcesContiguityAcrossTheSpliceBoundary()
+        {
+            // Gap entering the splice: predecessor ends at (1,0), inner starts at (5,5).
+            var inner = new CompoundCurve(new Curve[] { Line((5, 5), (6, 5)) }, _factory);
             Assert.Throws<ArgumentException>(() =>
-                new CompoundCurve(new Curve[] { inner }, _factory));
+                new CompoundCurve(new Curve[] { Line((0, 0), (1, 0)), inner }, _factory));
+
+            // Gap leaving the splice: inner ends at (2,0), successor starts at (7,7).
+            var contiguousInner = new CompoundCurve(new Curve[] { Line((1, 0), (2, 0)) }, _factory);
+            Assert.Throws<ArgumentException>(() =>
+                new CompoundCurve(
+                    new Curve[] { Line((0, 0), (1, 0)), contiguousInner, Line((7, 7), (8, 7)) },
+                    _factory));
         }
 
         [Test]
