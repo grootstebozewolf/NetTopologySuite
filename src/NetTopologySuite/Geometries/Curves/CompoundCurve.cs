@@ -8,10 +8,11 @@
 //   Assisted-by: Claude (Fable 5)
 //
 // Status: PRODUCTION (structure + WKT/WKB) — GEOS 3.13-class foundation.
-// Metrics and analytic ops (Length, Area, Envelope, IsSimple, Distance,
-// Centroid, InteriorPoint) fail closed with NotSupportedException until
-// arc-aware implementations land in a follow-up PR; Linearize() is the
-// explicit chord escape hatch.
+// Length is EXACT over the arc locus (ISO/IEC 13249-3 7.3.1 Desc 8; issue
+// NetTopologySuite.Proofs#615 ticket 615-d). The remaining metrics and
+// analytic ops (Area, Envelope, IsSimple, Distance, Centroid, InteriorPoint)
+// fail closed with NotSupportedException until their arc-aware
+// implementations land; Linearize() is the explicit chord escape hatch.
 
 using System;
 using System.Collections.Generic;
@@ -33,8 +34,9 @@ namespace NetTopologySuite.Geometries.Curves
     /// ADR-0005 in NetTopologySuite.Proofs: conform at the boundary, normalize
     /// inside.
     /// <para/>
-    /// Metrics and analytic ops fail closed with <see cref="NotSupportedException"/>
-    /// until arc-aware implementations land; <see cref="Linearize()"/> is the explicit
+    /// <see cref="Length"/> is exact over the arc locus; the remaining metrics and
+    /// analytic ops fail closed with <see cref="NotSupportedException"/> until their
+    /// arc-aware implementations land; <see cref="Linearize()"/> is the explicit
     /// chord escape hatch.
     /// </remarks>
     [Serializable]
@@ -190,15 +192,21 @@ namespace NetTopologySuite.Geometries.Curves
         public override OgcGeometryType OgcGeometryType => OgcGeometryType.CompoundCurve;
 
         /// <summary>
-        /// Arc-aware length is not implemented yet. Empty is 0; otherwise throws,
-        /// including when every component is a <see cref="LineString"/>.
+        /// The exact metric length: the sum of the component lengths
+        /// (ISO/IEC 13249-3 §7.10.1 over §7.1.2), each component computing its
+        /// own exact length — arc components over the arc locus, never a chord
+        /// approximation. Empty is 0.
         /// </summary>
-        /// <exception cref="NotSupportedException">
-        /// When this geometry is not empty. Call <see cref="Linearize()"/> to opt in
-        /// to an explicit chord approximation.
-        /// </exception>
-        public override double Length =>
-            IsEmpty ? 0d : throw CurvedGeometry.NotYetSupported(this, "Length");
+        public override double Length
+        {
+            get
+            {
+                double total = 0;
+                for (int i = 0; i < _curves.Length; i++)
+                    total += _curves[i].Length;
+                return total;
+            }
+        }
 
         /// <summary>
         /// The boundary of a curve per the Mod-2 rule: empty when the curve is empty

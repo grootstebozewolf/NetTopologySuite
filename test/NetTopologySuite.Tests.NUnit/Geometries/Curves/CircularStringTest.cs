@@ -88,10 +88,12 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void LengthFailsClosed()
+        public void LengthIsExactOverTheArcLocus()
         {
+            // Flipped from LengthFailsClosed by ticket 615-d: Length is the
+            // exact r·θ over the locus. Value contracts live in CurveMetricsTests.
             var cs = Make((1, 0), (0, 1), (-1, 0));
-            Assert.That(() => cs.Length, Throws.TypeOf<NotSupportedException>());
+            Assert.That(cs.Length, Is.EqualTo(Math.PI).Within(1e-9));
         }
 
         [Test]
