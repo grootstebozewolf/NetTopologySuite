@@ -184,6 +184,18 @@ namespace NetTopologySuite.Geometries.Curves
             /// flips a 1-dimensional overlap into nothing, or vice versa).
             /// </summary>
             AmbiguousCocircular,
+
+            /// <summary>
+            /// A circumradius is too large relative to the coordinate scale
+            /// for a double-precision contact decision: the r² terms in the
+            /// radical-line / circle-chord algebra carry absolute error of
+            /// order eps·r², which would swamp the match tolerance — the
+            /// review of this rung demonstrated silently wrong verdicts in
+            /// both directions for such near-collinear control triples. The
+            /// kernel refuses rather than guessing; exact arithmetic (the
+            /// oracle's path) is the way to widen this.
+            /// </summary>
+            IllConditioned,
         }
 
         /// <summary>
@@ -216,6 +228,17 @@ namespace NetTopologySuite.Geometries.Curves
                 ChordChordContacts(p0, p2, q0, q2, contacts, ref overlap);
                 return SegmentPairResult.Decided;
             }
+
+            // Conditioning guard (review-caught on this rung): the r² terms
+            // below carry absolute error ~eps·r², so a circumradius far
+            // beyond the coordinate scale silently flips verdicts. Refuse
+            // whenever that error could exceed the match tolerance.
+            double scale = 1 + MaxAbs(p0, p1, p2, q0, q1, q2);
+            double rMax = System.Math.Max(aIsArc ? ra : 0, bIsArc ? rb : 0);
+            const double machineEpsilon = 2.220446049250313e-16;
+            if (machineEpsilon * rMax * rMax > RelativeTolerance * scale * scale)
+                return SegmentPairResult.IllConditioned;
+
             if (aIsArc && !bIsArc)
             {
                 ArcChordContacts(ca, ra, ArcOf(p0, p1, p2, ca), q0, q2, contacts);
@@ -323,14 +346,28 @@ namespace NetTopologySuite.Geometries.Curves
             }
         }
 
+        private static double MaxAbs(params Coordinate[] coords)
+        {
+            double max = 0;
+            foreach (var c in coords)
+            {
+                max = System.Math.Max(max, System.Math.Abs(c.X));
+                max = System.Math.Max(max, System.Math.Abs(c.Y));
+            }
+            return max;
+        }
+
         private static void TwoCircleContacts(
             Coordinate ca, double ra, ArcFrame arcA,
             Coordinate cb, double rb, ArcFrame arcB,
             System.Collections.Generic.List<Coordinate> contacts)
         {
             double d = ca.Distance(cb);
-            double a = (d * d + ra * ra - rb * rb) / (2 * d);
-            double h2 = ra * ra - a * a;
+            // (ra−rb)(ra+rb) and (ra−a)(ra+a): the stable difference-of-
+            // squares forms; the conditioning guard upstream bounds what
+            // error the remaining r-terms can carry.
+            double a = (d * d + (ra - rb) * (ra + rb)) / (2 * d);
+            double h2 = (ra - a) * (ra + a);
             if (h2 < 0)
                 return;
             double ux = (cb.X - ca.X) / d, uy = (cb.Y - ca.Y) / d;

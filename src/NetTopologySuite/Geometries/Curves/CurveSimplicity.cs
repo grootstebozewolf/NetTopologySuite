@@ -78,6 +78,12 @@ namespace NetTopologySuite.Geometries.Curves
                             "to distinguish from one circle at double precision, but not exactly equal; refusing to " +
                             "guess between interval overlap and radical-line intersection (the 615-h lane, " +
                             "NetTopologySuite.Proofs issue #634)");
+                    if (result == CircularArcGeometry.SegmentPairResult.IllConditioned)
+                        throw CurvedGeometry.NotYetSupported(cs,
+                            $"IsSimple for segments {i} and {j} — a circumradius is too large relative to the " +
+                            "coordinate scale for a double-precision contact decision (the r² error would swamp " +
+                            "the match tolerance); exact arithmetic is the way to widen this (the 615-h lane, " +
+                            "NetTopologySuite.Proofs issue #634)");
                     if (overlap)
                         return false;
                     foreach (var contact in contacts)

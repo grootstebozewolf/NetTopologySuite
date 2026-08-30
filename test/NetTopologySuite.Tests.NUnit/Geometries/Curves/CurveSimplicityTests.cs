@@ -137,6 +137,38 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
+        public void NonAdjacentTangentTouch_IsNotSimple()
+        {
+            // Touch-only variant (review-added): the last chord runs along
+            // y = 1, exactly tangent to the first arc's circle at (1,1) —
+            // the circle-line quadratic has discriminant 0, a single root.
+            // Unlike NonAdjacentTouch_IsNotSimple (whose chord ALSO crosses
+            // the arc transversally at (1.6, 0.8)), this pins the
+            // endpoint/tangent contact path alone.
+            var cs = Cs((0, 0), (1, 1), (2, 0), (3, 0.5), (4, 1), (2.5, 1), (1, 1));
+            Assert.That(cs.IsSimple, Is.False);
+        }
+
+        [Test]
+        public void LargeCircumradiusPair_StaysFailClosed()
+        {
+            // Review-demonstrated blocker, pinned: the r² terms in the
+            // radical-line / circle-chord algebra carry absolute error
+            // ~eps·r², so a nearly-collinear control triple (circumradius
+            // ~2e8 here) produced silently wrong verdicts in both directions
+            // before the conditioning guard. This flat arc transversally
+            // double-crosses the unit semicircle near y = 0.9 — a decided
+            // kernel must answer false; the double kernel must refuse
+            // instead of guessing.
+            var cs = Cs(
+                (-2, 0.9), (0, 0.9 + 1e-8), (2, 0.9),
+                (1.5, 0.45), (1, 0),
+                (0, 1), (-1, 0));
+            var ex = Assert.Throws<NotSupportedException>(() => _ = cs.IsSimple);
+            Assert.That(ex.Message, Does.Contain("circumradius"));
+        }
+
+        [Test]
         public void NearlyCocircularAdjacentPair_StaysFailClosed()
         {
             // The second segment's circumcircle differs from the first's by
