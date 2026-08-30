@@ -214,6 +214,13 @@ namespace NetTopologySuite.Geometries.Curves
         /// direction the sweep passes — never the control-point box (a bulge
         /// past a control point counts; a collinear triple's intermediate
         /// point does not).
+        /// <para/>
+        /// Note this is NTS's <see cref="Envelope"/>, which deliberately
+        /// represents degenerate (zero-width/height) extents. The SQL-level
+        /// <c>ST_Envelope</c> additionally widens degenerate extents by an
+        /// implementation-defined ETOL so its result is always a proper
+        /// rectangle (§5.1.19 Desc 2c–e); that widening belongs to any future
+        /// SQL/MM-conformant surface, not here.
         /// </summary>
         protected override Envelope ComputeEnvelopeInternal()
         {
