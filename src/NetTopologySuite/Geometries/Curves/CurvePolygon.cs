@@ -85,12 +85,16 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 if (hole == null)
                 {
+                    // Representability: the §8.2.1 Desc 2-3 ring rules bind ring
+                    // VALUES; a null is not a value to check.
                     throw new ArgumentException(
                         "A CurvePolygon must not contain null holes.", nameof(holes));
                 }
             }
             if (shell.IsEmpty && HasNonEmptyElements(holes))
             {
+                // §8.2.1 Desc 17: the value is empty iff its exterior ring is
+                // empty -- holes without a shell are unrepresentable in that scheme.
                 throw new ArgumentException("shell is empty but holes are not", nameof(holes));
             }
             // Intake enforces representability only (ADR-0005 in
