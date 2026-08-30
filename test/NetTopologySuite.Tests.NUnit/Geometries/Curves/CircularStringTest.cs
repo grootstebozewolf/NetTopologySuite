@@ -186,15 +186,67 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void IsSimpleAndIsRingFailClosed()
+        public void IsSimpleFrontierAfterSingleSegmentRungLanded()
         {
+            // Flipped by ticket 615-h rung 1 (single-segment simplicity):
+            // an open single-segment arc is simple — its locus is an arc of
+            // its circumcircle with sweep in (0, 2π), injective in the angle
+            // (§7.3.1 Desc 8a; §4.2.4). IsRing = closed & simple follows as a
+            // checked false. The fail-closed frontier that remains is the
+            // multi-segment case, which needs arc-arc intersection.
             var open = Make((1, 0), (0, 1), (-1, 0));
-            Assert.That(() => open.IsSimple, Throws.TypeOf<NotSupportedException>());
-            Assert.That(() => open.IsRing, Throws.TypeOf<NotSupportedException>());
+            Assert.That(open.IsSimple, Is.True);
+            Assert.That(open.IsRing, Is.False);
 
             var closed = Make((1, 0), (0, 1), (-1, 0), (0, -1), (1, 0));
             Assert.That(() => closed.IsSimple, Throws.TypeOf<NotSupportedException>());
             Assert.That(() => closed.IsRing, Throws.TypeOf<NotSupportedException>());
+        }
+
+        [Test]
+        public void IsSimple_SingleSegmentMajorArc_IsTrue()
+        {
+            // Sweep > π is still injective in the angle: no self-meet.
+            var majorArc = Make((1, 0), (0, 1), (0, -1));
+            Assert.That(majorArc.IsSimple, Is.True);
+        }
+
+        [Test]
+        public void IsSimple_CollinearSingleSegment_IsTrue()
+        {
+            // Desc 8b: the locus is the start–end chord — a straight segment
+            // with distinct endpoints is simple.
+            var chord = Make((0, 0), (1, 1), (2, 2));
+            Assert.That(chord.IsSimple, Is.True);
+        }
+
+        [Test]
+        public void IsSimple_CollinearOvershoot_IsTrue()
+        {
+            // The intermediate is not part of the locus (Desc 8b): still the
+            // chord (0,0)–(1,1), still simple.
+            var chord = Make((0, 0), (2, 2), (1, 1));
+            Assert.That(chord.IsSimple, Is.True);
+        }
+
+        [Test]
+        public void IsSimple_DegenerateClosedSingleSegment_StaysFailClosed()
+        {
+            // p0 == p2 zeroes the orientation cross, so the triple is
+            // degenerate (§7.3.1 Desc 6 marks the closed single segment
+            // invalid); no unchecked verdict.
+            var degenerate = Make((1, 0), (0, 1), (1, 0));
+            Assert.That(() => degenerate.IsSimple, Throws.TypeOf<NotSupportedException>());
+
+            var allEqual = Make((1, 1), (1, 1), (1, 1));
+            Assert.That(() => allEqual.IsSimple, Throws.TypeOf<NotSupportedException>());
+        }
+
+        [Test]
+        public void IsSimple_EmptyCircularString_IsTrue()
+        {
+            var empty = new CircularString(_factory.CoordinateSequenceFactory.Create(0, Ordinates.XY), _factory);
+            Assert.That(empty.IsSimple, Is.True);
         }
 
         [Test]
