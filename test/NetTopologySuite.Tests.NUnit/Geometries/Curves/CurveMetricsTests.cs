@@ -116,5 +116,103 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             var cc = new CompoundCurve(null, _factory);
             Assert.That(cc.Length, Is.EqualTo(0.0));
         }
+
+        // --- Envelope (ticket 615-e): extremes over the arc locus, §5.1.19
+        // Desc 2b — the value's point set, not its control points. ------------
+
+        private CircularString UnitArc(double startDeg, double midDeg, double endDeg)
+        {
+            static double Rad(double d) => d * Math.PI / 180.0;
+            return Cs(
+                (Math.Cos(Rad(startDeg)), Math.Sin(Rad(startDeg))),
+                (Math.Cos(Rad(midDeg)), Math.Sin(Rad(midDeg))),
+                (Math.Cos(Rad(endDeg)), Math.Sin(Rad(endDeg))));
+        }
+
+        [Test]
+        public void Envelope_IncludesAxisExtremeBeyondControls()
+        {
+            // The former Red_Envelope contract, flipped green: −30°…50° on the
+            // unit circle reaches x=1 at angle 0°, which is not a control point.
+            var arc = UnitArc(-30, 10, 50);
+            Assert.That(arc.EnvelopeInternal.MaxX, Is.EqualTo(1.0).Within(1e-12));
+        }
+
+        [TestCase(-30, 10, 50, "+x")]
+        [TestCase(40, 80, 140, "+y")]
+        [TestCase(130, 170, 230, "-x")]
+        [TestCase(220, 260, 320, "-y")]
+        public void Envelope_EachAxisCrossingIsExact(double s, double m, double e, string axis)
+        {
+            var env = UnitArc(s, m, e).EnvelopeInternal;
+            double v = axis switch
+            {
+                "+x" => env.MaxX,
+                "+y" => env.MaxY,
+                "-x" => -env.MinX,
+                _ => -env.MinY,
+            };
+            // The crossing extreme is centre ± r EXACTLY (unit vector math),
+            // not an atan2 approximation.
+            Assert.That(v, Is.EqualTo(1.0).Within(1e-12));
+        }
+
+        [Test]
+        public void Envelope_NoAxisCrossing_IsTheEndpointBox()
+        {
+            // 10°…80° crosses no axis direction: x and y are monotone along
+            // the arc, so the extremes are the endpoints'.
+            static double Rad(double d) => d * Math.PI / 180.0;
+            var env = UnitArc(10, 40, 80).EnvelopeInternal;
+            Assert.That(env.MinX, Is.EqualTo(Math.Cos(Rad(80))).Within(1e-12));
+            Assert.That(env.MaxX, Is.EqualTo(Math.Cos(Rad(10))).Within(1e-12));
+            Assert.That(env.MinY, Is.EqualTo(Math.Sin(Rad(10))).Within(1e-12));
+            Assert.That(env.MaxY, Is.EqualTo(Math.Sin(Rad(80))).Within(1e-12));
+        }
+
+        [Test]
+        public void Envelope_ClockwiseArc_MatchesTheReversedLocus()
+        {
+            // Same locus as the flip test, traversed CW: the envelope is a
+            // property of the point set, not the direction.
+            var env = UnitArc(50, 10, -30).EnvelopeInternal;
+            Assert.That(env.MaxX, Is.EqualTo(1.0).Within(1e-12));
+        }
+
+        [Test]
+        public void Envelope_FivePointFullCircle_IsTheCircleBox()
+        {
+            var env = Cs((0, 0), (1, 1), (2, 0), (1, -1), (0, 0)).EnvelopeInternal;
+            Assert.That(env.MinX, Is.EqualTo(0.0).Within(1e-12));
+            Assert.That(env.MaxX, Is.EqualTo(2.0).Within(1e-12));
+            Assert.That(env.MinY, Is.EqualTo(-1.0).Within(1e-12));
+            Assert.That(env.MaxY, Is.EqualTo(1.0).Within(1e-12));
+        }
+
+        [Test]
+        public void Envelope_CollinearSegment_IsTheChordBox_ExcludingTheIntermediate()
+        {
+            // §7.3.1 Desc 8b: the collinear locus is the start–end chord; the
+            // intermediate control point is NOT part of the point set.
+            var env = Cs((0, 0), (5, 5), (2, 2)).EnvelopeInternal;
+            Assert.That(env.MaxX, Is.EqualTo(2.0).Within(1e-12));
+            Assert.That(env.MaxY, Is.EqualTo(2.0).Within(1e-12));
+        }
+
+        [Test]
+        public void Envelope_CompoundCurve_IsTheComponentUnion()
+        {
+            var line = _factory.CreateLineString(new[]
+            {
+                new Coordinate(-3, 0), new Coordinate(1, 0)
+            });
+            var arc = Cs((1, 0), (2, 1), (3, 0)); // bulges to y=1, x max 3
+            var cc = new CompoundCurve(new Curve[] { line, arc }, _factory);
+            var env = cc.EnvelopeInternal;
+            Assert.That(env.MinX, Is.EqualTo(-3.0).Within(1e-12));
+            Assert.That(env.MaxX, Is.EqualTo(3.0).Within(1e-12));
+            Assert.That(env.MaxY, Is.EqualTo(1.0).Within(1e-12));
+            Assert.That(env.MinY, Is.EqualTo(0.0).Within(1e-12));
+        }
     }
 }

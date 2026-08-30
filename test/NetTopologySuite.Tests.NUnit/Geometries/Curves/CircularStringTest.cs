@@ -81,10 +81,18 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void EnvelopeFailsClosedUntilArcAware()
+        public void EnvelopeIsExactOverTheArcLocus()
         {
+            // Flipped from EnvelopeFailsClosedUntilArcAware by ticket 615-e.
+            // Circle through (0,0),(5,10),(10,0): centre (5, 3.75), r = 6.25;
+            // the CW major arc crosses -x, +y and +x. Value contracts live in
+            // CurveMetricsTests.
             var cs = Make((0, 0), (5, 10), (10, 0));
-            Assert.That(() => cs.EnvelopeInternal, Throws.TypeOf<NotSupportedException>());
+            var env = cs.EnvelopeInternal;
+            Assert.That(env.MinX, Is.EqualTo(-1.25).Within(1e-12));
+            Assert.That(env.MaxX, Is.EqualTo(11.25).Within(1e-12));
+            Assert.That(env.MinY, Is.EqualTo(0.0).Within(1e-12));
+            Assert.That(env.MaxY, Is.EqualTo(10.0).Within(1e-12));
         }
 
         [Test]

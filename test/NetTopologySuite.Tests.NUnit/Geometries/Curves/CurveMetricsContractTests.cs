@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Intentional-fail hooks for arc-aware Distance / Envelope on the SQL/MM
-// curve foundation. These pin expected contracts and stay red until
-// arc-aware metrics land; today the members throw NotSupportedException
-// instead of returning control-polyline / control-bbox stubs.
-// Length flipped green (ticket 615-d) and lives in CurveMetricsTests.
+// Intentional-fail hooks for arc-aware Distance on the SQL/MM curve
+// foundation. These pin expected contracts and stay red until arc-aware
+// Distance lands; today DistanceOp throws NotSupportedException instead
+// of returning chord-based stubs. Length (615-d) and Envelope (615-e)
+// flipped green and live in CurveMetricsTests.
 //
 // Assisted-by: xAI Grok
 
@@ -18,10 +18,11 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
 {
     /// <summary>
     /// Intentional-fail contract tests for arc-aware curve metrics.
-    /// Assert SQL/MM / GEOS-quality Distance and Envelope behaviour;
-    /// they stay red until arc-aware metrics land (today they fail with
+    /// Assert SQL/MM / GEOS-quality Distance behaviour; they stay red until
+    /// arc-aware Distance lands (today they fail with
     /// <see cref="NotSupportedException"/> rather than wrong chord values).
-    /// Length flipped green (ticket 615-d): see <see cref="CurveMetricsTests"/>.
+    /// Length (615-d) and Envelope (615-e) flipped green: see
+    /// <see cref="CurveMetricsTests"/>.
     /// Excluded from default CI via <c>FailureCase</c> (same pattern as other known-fail fixtures).
     /// </summary>
     [Category("FailureCase")]
@@ -45,21 +46,6 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             return new CircularString(seq, _factory);
         }
 
-        /// <summary>
-        /// Unit circle arc through angles −30°, 10°, 50° (radians via cos/sin).
-        /// True max X on the arc is 1 (angle 0°), which is not a control point.
-        /// </summary>
-        private CircularString UnitArcPastAxis()
-        {
-            static double Rad(double deg) => deg * Math.PI / 180.0;
-            var seq = _factory.CoordinateSequenceFactory.Create(new[]
-            {
-                new Coordinate(Math.Cos(Rad(-30)), Math.Sin(Rad(-30))),
-                new Coordinate(Math.Cos(Rad(10)), Math.Sin(Rad(10))),
-                new Coordinate(Math.Cos(Rad(50)), Math.Sin(Rad(50)))
-            });
-            return new CircularString(seq, _factory);
-        }
 
         /// <summary>
         /// P0 — Distance to a curve must be finite and arc-correct.
@@ -95,18 +81,5 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(d, Is.EqualTo(0.0).Within(1e-12));
         }
 
-        /// <summary>
-        /// P1 — Envelope must cover the true arc, not only control points.
-        /// </summary>
-        [Test]
-        public void Red_Envelope_IncludesAxisExtremeBeyondControls()
-        {
-            var arc = UnitArcPastAxis();
-            var env = arc.EnvelopeInternal;
-
-            Assert.That(env.MaxX, Is.GreaterThanOrEqualTo(1.0 - 1e-12),
-                "Unit arc spanning −30°…50° reaches x=1 at angle 0°; " +
-                "control-only bbox stops at cos(10°) ≈ 0.985.");
-        }
     }
 }
