@@ -181,18 +181,20 @@ namespace NetTopologySuite.Geometries.Curves
         }
 
         /// <summary>
-        /// Arc-aware validity, rung 1 (<see cref="CurveValidity"/>; ticket
-        /// 615-g): definite <c>false</c> when an implemented ISO/IEC 13249-3
-        /// rule is violated (per-segment start≠end §7.3.1 Desc 6, count shape
-        /// Desc 7); otherwise throws naming the missing simplicity rung
-        /// (ticket 615-h, #624). Never an unchecked <c>true</c>.
+        /// Arc-aware validity (<see cref="CurveValidity"/>; tickets 615-g,
+        /// 615-h #634): definite <c>false</c> when an implemented ISO/IEC
+        /// 13249-3 rule is violated (per-segment start≠end §7.3.1 Desc 6,
+        /// count shape Desc 7, non-finite coordinates for IsValidOp parity),
+        /// checked <c>true</c> otherwise — Desc 6 and Desc 7 are §7.3.1's
+        /// complete validity obligations ("simple ∧ closed ⇒ circular ring",
+        /// Desc 9–10, is a definition, not a constraint).
         /// <para/>
         /// Note a single closed segment is definitely invalid under Desc 6 —
         /// whole circles are <c>ST_Circle</c>'s job (§4.2.7, not yet modeled).
         /// Write a full circle as the two-segment five-point form, e.g.
         /// <c>CIRCULARSTRING (0 0, 1 1, 2 0, 1 -1, 0 0)</c>.
         /// </summary>
-        public override bool IsValid => CurveValidity.IsValidRung1(this);
+        public override bool IsValid => CurveValidity.IsValid(this);
 
         /// <summary>
         /// Arc-aware simplicity over the locus (ISO/IEC 13249-3 §4.2.4 over

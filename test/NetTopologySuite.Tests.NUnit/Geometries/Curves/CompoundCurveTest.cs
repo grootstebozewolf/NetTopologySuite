@@ -244,19 +244,24 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void IsSimpleAndIsRingFailClosed()
+        public void IsSimpleAndIsRingDecidedAfterChainRung()
         {
+            // Flipped by ticket 615-h rung 3 (#634): CompoundCurve simplicity
+            // is decided over the mixed arc/chord chain (value contracts in
+            // CurveSimplicityTests). The open value's chord meets the arc's
+            // circle only at the shared vertex; the closed value is the
+            // classic semicircle-plus-diameter ring.
             var open = new CompoundCurve(
                 new Curve[] { Line((0, 0), (1, 0)), Arc((1, 0), (2, 1), (3, 0)) },
                 _factory);
-            Assert.That(() => open.IsSimple, Throws.TypeOf<NotSupportedException>());
-            Assert.That(() => open.IsRing, Throws.TypeOf<NotSupportedException>());
+            Assert.That(open.IsSimple, Is.True);
+            Assert.That(open.IsRing, Is.False);
 
             var closed = new CompoundCurve(
                 new Curve[] { Arc((0, 0), (1, 1), (2, 0)), Line((2, 0), (0, 0)) },
                 _factory);
-            Assert.That(() => closed.IsSimple, Throws.TypeOf<NotSupportedException>());
-            Assert.That(() => closed.IsRing, Throws.TypeOf<NotSupportedException>());
+            Assert.That(closed.IsSimple, Is.True);
+            Assert.That(closed.IsRing, Is.True);
             Assert.That(closed.IsClosed, Is.True);
         }
 

@@ -147,13 +147,38 @@ namespace NetTopologySuite.Geometries.Curves
         public override OgcGeometryType OgcGeometryType => OgcGeometryType.CurvePolygon;
 
         /// <summary>
-        /// Arc-aware validity, rung 1 (<see cref="CurveValidity"/>; ticket
-        /// 615-g): definite <c>false</c> when an implemented ISO/IEC 13249-3
-        /// rule is violated in a ring (closure §8.2.1 Desc 2-3, or a
-        /// definite-false ring value); otherwise throws naming the missing
-        /// simplicity rung (ticket 615-h, #624). Never an unchecked <c>true</c>.
+        /// Arc-aware validity (<see cref="CurveValidity"/>; tickets 615-g,
+        /// 615-h #634): definite <c>false</c> when an implemented ISO/IEC
+        /// 13249-3 rule is violated in a ring (closure §8.2.1 Desc 2–3, a
+        /// definite-false ring value, or — since rung 3 — a provably
+        /// non-simple ring); a value passing everything still throws naming
+        /// the ring-pair conditions (Desc 11–14, issue #639). Never an
+        /// unchecked <c>true</c>.
         /// </summary>
-        public override bool IsValid => CurveValidity.IsValidRung1(this);
+        public override bool IsValid => CurveValidity.IsValid(this);
+
+        /// <summary>
+        /// Polygonal simplicity (the classical <c>IsSimplePolygonal</c>
+        /// reading): every ring simple. CircularString and CompoundCurve
+        /// rings go through the arc-aware chain kernel (ticket 615-h rung 3,
+        /// #634), LineString rings through the classical machinery.
+        /// </summary>
+        public override bool IsSimple
+        {
+            get
+            {
+                if (IsEmpty)
+                    return true;
+                if (!CurveSimplicity.RingIsSimple(_shell))
+                    return false;
+                for (int i = 0; i < _holes.Length; i++)
+                {
+                    if (!CurveSimplicity.RingIsSimple(_holes[i]))
+                        return false;
+                }
+                return true;
+            }
+        }
 
         /// <inheritdoc cref="Geometry.IsEmpty"/>
         public override bool IsEmpty => _shell.IsEmpty;

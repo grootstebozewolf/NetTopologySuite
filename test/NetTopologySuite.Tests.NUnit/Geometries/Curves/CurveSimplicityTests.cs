@@ -168,6 +168,109 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(ex.Message, Does.Contain("circumradius"));
         }
 
+        private LineString Line(params (double x, double y)[] pts)
+        {
+            var coords = new Coordinate[pts.Length];
+            for (int i = 0; i < pts.Length; i++) coords[i] = new Coordinate(pts[i].x, pts[i].y);
+            return _factory.CreateLineString(coords);
+        }
+
+        // --- CompoundCurve / CurvePolygon chains (ticket 615-h rung 3,
+        // #634): the same pairwise composition over mixed arc/chord chains;
+        // a multi-point LineString component contributes one chord per
+        // consecutive coordinate pair. ---------------------------------------
+
+        [Test]
+        public void CompoundLineTangentThroughArc_IsNotSimple()
+        {
+            // The LineString's SECOND sub-segment runs along y = 1, tangent
+            // to the arc's circle at (1,1) — a non-adjacent chain contact.
+            var cc = new CompoundCurve(new Curve[]
+            {
+                Cs((0, 0), (1, 1), (2, 0)),
+                Line((2, 0), (2, 1), (0, 1)),
+            }, _factory);
+            Assert.That(cc.IsSimple, Is.False);
+        }
+
+        [Test]
+        public void CompoundThereAndBackLine_IsNotSimple()
+        {
+            var cc = new CompoundCurve(new Curve[]
+            {
+                Line((0, 0), (1, 0)),
+                Line((1, 0), (0, 0)),
+            }, _factory);
+            Assert.That(cc.IsSimple, Is.False);
+            Assert.That(cc.IsRing, Is.False, "closed but overlapping");
+        }
+
+        [Test]
+        public void CompoundZeroLengthSubSegment_IsSkippedNotFatal()
+        {
+            // Classical LineStrings tolerate repeated points; the zero-length
+            // chord contributes no locus and must not break adjacency.
+            var cc = new CompoundCurve(new Curve[]
+            {
+                Line((0, 0), (0, 0), (1, 0)),
+                Cs((1, 0), (2, 1), (3, 0)),
+            }, _factory);
+            Assert.That(cc.IsSimple, Is.True);
+        }
+
+        [Test]
+        public void CompoundWithDegenerateArcComponent_StaysFailClosed()
+        {
+            // A CircularString component whose segment has start == end is
+            // Desc-6-degenerate: its locus is not a decidable arc.
+            var cc = new CompoundCurve(new Curve[]
+            {
+                Line((0, 0), (1, 1)),
+                Cs((1, 1), (2, 2), (1, 1)),
+            }, _factory);
+            Assert.That(() => cc.IsSimple, Throws.TypeOf<NotSupportedException>());
+        }
+
+        [Test]
+        public void CurvePolygonRings_SimpleAndNot()
+        {
+            // Polygonal simplicity = every ring simple (the classical
+            // IsSimplePolygonal reading): the full-circle idiom ring is
+            // simple; the bowtie LineString ring is not.
+            var circleRing = Cs((0, 0), (1, 1), (2, 0), (1, -1), (0, 0));
+            Assert.That(new CurvePolygon(circleRing, _factory).IsSimple, Is.True);
+
+            var bowtie = Line((0, 0), (2, 2), (2, 0), (0, 2), (0, 0));
+            Assert.That(new CurvePolygon(bowtie, _factory).IsSimple, Is.False);
+
+            Assert.That(new CurvePolygon(null, _factory).IsSimple, Is.True, "empty");
+        }
+
+        [Test]
+        public void CocircularReversedAsymmetricTraversal_NowDecided()
+        {
+            // The #630 review's probe: the same asymmetric triple traversed
+            // back used to land in the ambiguity band (circumcentres differed
+            // in the last ulps by argument order). TryCircle now canonicalizes
+            // the triple before computing the circumcentre, so both segments
+            // get the bit-identical circle and the cocircular overlap decides.
+            var cs = Cs((0.1, 0.2), (1.3, 1.7), (2.9, 0.3), (1.3, 1.7), (0.1, 0.2));
+            Assert.That(cs.IsSimple, Is.False);
+        }
+
+        [Test]
+        public void MultiCurveAndMultiSurface_StayFailClosed()
+        {
+            var mc = new MultiCurve(new Curve[] { Cs((0, 0), (1, 1), (2, 0)) }, _factory);
+            Assert.That(() => mc.IsSimple, Throws.TypeOf<NotSupportedException>());
+
+            var ms = new MultiSurface(new Geometry[]
+            {
+                new CurvePolygon(Cs((0, 0), (1, 1), (2, 0), (1, -1), (0, 0)), _factory),
+            }, _factory);
+            Assert.That(() => ms.IsSimple, Throws.TypeOf<NotSupportedException>());
+        }
+
         [Test]
         public void NearlyCocircularAdjacentPair_StaysFailClosed()
         {
