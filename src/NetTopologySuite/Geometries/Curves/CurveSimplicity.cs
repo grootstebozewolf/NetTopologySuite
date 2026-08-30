@@ -37,6 +37,7 @@
 // conditioning guard (see CircularArcGeometry.SegmentPairContacts) — the
 // exactness upgrades are the 615-h continuation, issue #641.
 
+using System;
 using System.Collections.Generic;
 
 namespace NetTopologySuite.Geometries.Curves
@@ -115,7 +116,10 @@ namespace NetTopologySuite.Geometries.Curves
                 if (member.IsEmpty)
                     continue;
                 var chain = new List<ChainSegment>();
-                AppendCurve(mc, member, chain);
+                // The member is the owner here: chain-build and
+                // member-simplicity residues are member-local (the review
+                // flagged the mixed naming).
+                AppendCurve(member, member, chain);
                 if (!IsSimpleChain(member, chain, member.IsClosed))
                     return false;
                 chains.Add(chain);
@@ -123,6 +127,7 @@ namespace NetTopologySuite.Geometries.Curves
             }
 
             var contacts = new List<Coordinate>();
+            NotSupportedException deferred = null;
             for (int a = 0; a < chains.Count; a++)
             {
                 for (int b = a + 1; b < chains.Count; b++)
@@ -134,9 +139,14 @@ namespace NetTopologySuite.Geometries.Curves
                         for (int j = 0; j < chainB.Count; j++)
                         {
                             contacts.Clear();
-                            CheckedPairContacts(mc, chainA[i], chainB[j],
+                            var residue = PairContacts(mc, chainA[i], chainB[j],
                                 $"members {a} and {b} (segments {i} and {j})",
                                 contacts, out bool overlap);
+                            if (residue != null)
+                            {
+                                deferred = deferred ?? residue;
+                                continue;
+                            }
                             if (overlap)
                                 return false;
                             foreach (var contact in contacts)
@@ -153,6 +163,8 @@ namespace NetTopologySuite.Geometries.Curves
                     }
                 }
             }
+            if (deferred != null)
+                throw deferred;
             return true;
         }
 
@@ -217,10 +229,14 @@ namespace NetTopologySuite.Geometries.Curves
         /// condition both consume this): <paramref name="overlap"/> reports a
         /// shared 1-D piece (decided without enumerating points); otherwise
         /// <paramref name="contacts"/> receives the tolerance-deduplicated
-        /// contact points — a tangency reported by several adjacent segment
-        /// pairs counts once. Kernel residues throw, named.
+        /// contact points from the DECIDED pairs — a tangency reported by
+        /// several adjacent segment pairs counts once. A kernel residue is
+        /// RETURNED, not thrown: the decided contacts stay sound (ambiguity
+        /// can only add contacts), so the caller may still refute on them —
+        /// but it must fail closed on the residue before certifying any
+        /// verdict that needs the COMPLETE contact set.
         /// </summary>
-        internal static void RingPairContacts(
+        internal static NotSupportedException RingPairContacts(
             Geometry owner, Curve ringA, Curve ringB,
             List<Coordinate> contacts, out bool overlap)
         {
@@ -229,18 +245,24 @@ namespace NetTopologySuite.Geometries.Curves
             AppendCurve(owner, ringA, chainA);
             AppendCurve(owner, ringB, chainB);
             overlap = false;
+            NotSupportedException deferred = null;
             var pair = new List<Coordinate>();
             for (int i = 0; i < chainA.Count; i++)
             {
                 for (int j = 0; j < chainB.Count; j++)
                 {
                     pair.Clear();
-                    CheckedPairContacts(owner, chainA[i], chainB[j],
+                    var residue = PairContacts(owner, chainA[i], chainB[j],
                         $"ring-pair segments {i} and {j}", pair, out bool segOverlap);
+                    if (residue != null)
+                    {
+                        deferred = deferred ?? residue;
+                        continue;
+                    }
                     if (segOverlap)
                     {
                         overlap = true;
-                        return;
+                        return null;
                     }
                     foreach (var contact in pair)
                     {
@@ -249,6 +271,7 @@ namespace NetTopologySuite.Geometries.Curves
                     }
                 }
             }
+            return deferred;
         }
 
         /// <summary>
@@ -289,9 +312,9 @@ namespace NetTopologySuite.Geometries.Curves
                 var start = seq.GetCoordinate(2 * s);
                 var end = seq.GetCoordinate(2 * s + 2);
                 if (start.Equals2D(end))
-                    throw CurvedGeometry.NotYetSupported(owner, segCount == 1 && owner is CircularString
+                    throw CurvedGeometry.Refused(owner, segCount == 1 && owner is CircularString
                         ? "IsSimple for a degenerate closed single segment (start == end, invalid under 7.3.1 Desc 6)"
-                        : $"IsSimple with a degenerate closed arc segment (start == end, invalid under 7.3.1 Desc 6)");
+                        : "IsSimple with a degenerate closed arc segment (start == end, invalid under 7.3.1 Desc 6)");
                 chain.Add(new ChainSegment(start, seq.GetCoordinate(2 * s + 1), end));
             }
         }
@@ -312,7 +335,7 @@ namespace NetTopologySuite.Geometries.Curves
         private static bool IsSimpleChain(Geometry owner, List<ChainSegment> chain, bool closed)
         {
             if (chain.Count == 0)
-                throw CurvedGeometry.NotYetSupported(owner,
+                throw CurvedGeometry.Refused(owner,
                     "IsSimple for a value whose locus degenerates to a single point (every sub-segment is zero-length)");
             if (chain.Count == 1)
             {
@@ -324,13 +347,21 @@ namespace NetTopologySuite.Geometries.Curves
             }
 
             var contacts = new List<Coordinate>();
+            NotSupportedException deferred = null;
             for (int i = 0; i < chain.Count; i++)
             {
                 for (int j = i + 1; j < chain.Count; j++)
                 {
                     contacts.Clear();
-                    CheckedPairContacts(owner, chain[i], chain[j],
+                    var residue = PairContacts(owner, chain[i], chain[j],
                         $"segments {i} and {j}", contacts, out bool overlap);
+                    if (residue != null)
+                    {
+                        // Deferred, not thrown: a definite refutation from a
+                        // later pair is sound regardless of this one.
+                        deferred = deferred ?? residue;
+                        continue;
+                    }
                     if (overlap)
                         return false;
                     foreach (var contact in contacts)
@@ -340,33 +371,50 @@ namespace NetTopologySuite.Geometries.Curves
                     }
                 }
             }
+            if (deferred != null)
+                throw deferred;
             return true;
         }
 
         /// <summary>
         /// The pair kernel with the fail-closed residues turned into named
-        /// throws — <paramref name="what"/> says which pair, the message says
-        /// why the decision is refused and where the lane continues.
+        /// exceptions, returned rather than thrown so the caller can DEFER
+        /// them: a definite refutation found elsewhere in the same scan is
+        /// sound regardless of an ambiguous pair (ambiguity can only add
+        /// contacts, never remove a witnessed one), so <c>false</c> beats a
+        /// residue — only a would-be <c>true</c> (or an uncertain count)
+        /// must fail closed on it. <paramref name="what"/> says which pair.
         /// </summary>
-        private static void CheckedPairContacts(
+        private static NotSupportedException PairContacts(
             Geometry owner, ChainSegment a, ChainSegment b, string what,
             List<Coordinate> contacts, out bool overlap)
         {
             var result = CircularArcGeometry.SegmentPairContacts(
                 a.Start, a.Mid, a.End, b.Start, b.Mid, b.End,
                 contacts, out overlap);
-            if (result == CircularArcGeometry.SegmentPairResult.AmbiguousCocircular)
-                throw CurvedGeometry.NotYetSupported(owner,
-                    $"a contact decision for nearly cocircular {what} — their circumcircles are too close " +
-                    "to distinguish from one circle at double precision, but not exactly equal; refusing to " +
-                    "guess between interval overlap and radical-line intersection (the 615-h lane, " +
-                    "NetTopologySuite.Proofs issue #641)");
-            if (result == CircularArcGeometry.SegmentPairResult.IllConditioned)
-                throw CurvedGeometry.NotYetSupported(owner,
-                    $"a contact decision for {what} — a circumradius is too large relative to the " +
-                    "coordinate scale for a double-precision contact decision (the r² error would swamp " +
-                    "the match tolerance); exact arithmetic is the way to widen this (the 615-h lane, " +
-                    "NetTopologySuite.Proofs issue #641)");
+            switch (result)
+            {
+                case CircularArcGeometry.SegmentPairResult.AmbiguousCocircular:
+                    return CurvedGeometry.Refused(owner,
+                        $"a contact decision for nearly cocircular {what} — their circumcircles are too close " +
+                        "to distinguish from one circle at double precision, but not exactly equal; refusing to " +
+                        "guess between interval overlap and radical-line intersection (the 615-h lane, " +
+                        "NetTopologySuite.Proofs issue #641)");
+                case CircularArcGeometry.SegmentPairResult.IllConditioned:
+                    return CurvedGeometry.Refused(owner,
+                        $"a contact decision for {what} — a circumradius is too large relative to the " +
+                        "coordinate scale for a double-precision contact decision (the r² error would swamp " +
+                        "the match tolerance); exact arithmetic is the way to widen this (the 615-h lane, " +
+                        "NetTopologySuite.Proofs issue #641)");
+                case CircularArcGeometry.SegmentPairResult.AmbiguousTangency:
+                    return CurvedGeometry.Refused(owner,
+                        $"a contact decision for nearly tangent {what} — the intersection discriminant is " +
+                        "within its own double-precision error band, so one touch point cannot be told from " +
+                        "a close crossing pair or a near-miss (rung-4 review-demonstrated); exact arithmetic " +
+                        "is the way to widen this (the 615-h lane, NetTopologySuite.Proofs issue #641)");
+                default:
+                    return null;
+            }
         }
 
         /// <summary>
@@ -382,7 +430,7 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 double x = seq.GetX(i), y = seq.GetY(i);
                 if (double.IsNaN(x) || double.IsInfinity(x) || double.IsNaN(y) || double.IsInfinity(y))
-                    throw CurvedGeometry.NotYetSupported(owner,
+                    throw CurvedGeometry.Refused(owner,
                         $"a simplicity decision with a non-finite control coordinate (index {i}); " +
                         "IsValid is definite-false for this value");
             }

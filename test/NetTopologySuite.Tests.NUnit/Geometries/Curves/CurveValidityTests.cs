@@ -169,15 +169,47 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         public void IsValid_CurvePolygonRingsTouchingAtOnePoint_StaysFailClosed()
         {
             // Internally tangent circles: shell centre (2,0) r=2, hole centre
-            // (3,0) r=1, touching only at (4,0). ONE contact point passes
-            // Desc 11 — but whether that tangency creates a spike/cut or
-            // disconnects the interior (Desc 12–14) is still undecided, so
-            // this stays fail-closed rather than returning an unchecked true.
+            // (3,0) r=1, touching only at (4,0). Fail-closed, now via the
+            // kernel's tangency refusal band (rung-4 review): near tangency
+            // the discriminant's float error spans both signs, so one touch
+            // cannot be told from a close crossing PAIR — the review
+            // demonstrated a variant of this shape answering a wrong
+            // definite false through a phantom split contact. Deciding the
+            // band (and then Desc 12–14 behind it) is issue #641's exact
+            // arithmetic.
             var shell = Cs((0, 0), (2, 2), (4, 0), (2, -2), (0, 0));
             var hole = Cs((2, 0), (3, 1), (4, 0), (3, -1), (2, 0));
             var cp = new CurvePolygon(shell, new Curve[] { hole }, _factory);
             Assert.That(() => cp.IsValid,
-                Throws.TypeOf<NotSupportedException>().With.Message.Contains("615-h").And.Message.Contains("Desc 12"));
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("615-h").And.Message.Contains("tangent"));
+        }
+
+        [Test]
+        public void IsValid_CurvePolygonNearTangentHole_StaysFailClosed()
+        {
+            // Rung-4 review witness W2, pinned: shell and hole are exactly
+            // internally tangent at (2,0) — the rings meet in exactly one
+            // point (verified with exact rational arithmetic in the review),
+            // so Desc 11 passes and a definite false is WRONG. Before the
+            // tangency band this returned exactly that wrong false: the
+            // kernel split the tangency into a phantom contact pair ~6e-8
+            // apart, 20× the dedup tolerance. The honest double-precision
+            // answer is the fail-closed refusal.
+            var shell = Cs((0, 2), (2, 0), (0, -2), (-2, 0), (0, 2));
+            var hole = new CompoundCurve(new Curve[]
+            {
+                Cs((0.7865526304750483, 1.213447369524952), (2, 0),
+                   (0.7865526304750483, -1.213447369524952)),
+                _factory.CreateLineString(new[]
+                {
+                    new Coordinate(0.7865526304750483, -1.213447369524952),
+                    new Coordinate(0.4865526304750483, 0),
+                    new Coordinate(0.7865526304750483, 1.213447369524952),
+                }),
+            }, _factory);
+            var cp = new CurvePolygon(shell, new Curve[] { hole }, _factory);
+            Assert.That(() => cp.IsValid,
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("tangent"));
         }
 
         [Test]
