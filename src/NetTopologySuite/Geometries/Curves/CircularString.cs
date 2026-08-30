@@ -167,6 +167,11 @@ namespace NetTopologySuite.Geometries.Curves
         /// rule is violated (per-segment start≠end §7.3.1 Desc 6, count shape
         /// Desc 7); otherwise throws naming the missing simplicity rung
         /// (ticket 615-h, #624). Never an unchecked <c>true</c>.
+        /// <para/>
+        /// Note a single closed segment is definitely invalid under Desc 6 —
+        /// whole circles are <c>ST_Circle</c>'s job (§4.2.7, not yet modeled).
+        /// Write a full circle as the two-segment five-point form, e.g.
+        /// <c>CIRCULARSTRING (0 0, 1 1, 2 0, 1 -1, 0 0)</c>.
         /// </summary>
         public override bool IsValid => CurveValidity.IsValidRung1(this);
 
