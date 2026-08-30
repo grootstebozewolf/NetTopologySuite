@@ -164,11 +164,30 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         [TestCase("MULTICURVE Z (CIRCULARSTRING M (1 1 5, 2 2 5, 3 3 5))")]
         [TestCase("MULTISURFACE Z (CURVEPOLYGON M (CIRCULARSTRING (0 0 1, 2 2 1, 4 0 1, 2 -2 1, 0 0 1)))")]
         [TestCase("MULTISURFACE Z (POLYGON M ((0 0 1, 4 0 1, 4 4 1, 0 0 1)))")]
+        [TestCase("COMPOUNDCURVE Z (COMPOUNDCURVE M ((0 0 1, 1 1 1)))")]
         public void ReadRejectsMixedZmTagOnCurveComponent(string wkt)
         {
             var ex = Assert.Throws<ParseException>(() => new WKTReader().Read(wkt));
-            Assert.That(ex.Message, Does.Contain("13249"),
+            Assert.That(ex.Message, Does.Contain("5.1.67"),
                 "the rejection must cite the dimension-consistency rule");
+        }
+
+        [TestCase("COMPOUNDCURVE Z (CIRCULARSTRINGZ M (0 0 5, 1 1 5, 2 0 5))")]
+        [TestCase("COMPOUNDCURVE Z (CIRCULARSTRING Z M (0 0 5, 1 1 5, 2 0 5))")]
+        public void ReadRejectsDoubledZmTagOnCurveComponent(string wkt)
+        {
+            // A second tag after the first would otherwise be discarded
+            // silently by the reader's tag-skip.
+            var ex = Assert.Throws<ParseException>(() => new WKTReader().Read(wkt));
+            Assert.That(ex.Message, Does.Contain("5.1.67"));
+        }
+
+        [Test]
+        public void ReadAcceptsJoinedComponentTagMatchingTheOuter()
+        {
+            var cc = (CompoundCurve)new WKTReader().Read(
+                "COMPOUNDCURVE Z (CIRCULARSTRINGZ (0 0 5, 1 1 5, 2 0 5), (2 0 5, 3 0 5))");
+            Assert.That(((CircularString)cc.Curves[0]).CoordinateSequence.GetZ(0), Is.EqualTo(5));
         }
 
         [Test]
@@ -179,7 +198,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             // rule (not the bare accidental arity error it used to be).
             var ex = Assert.Throws<ParseException>(() => new WKTReader().Read(
                 "COMPOUNDCURVE Z ((0 0 1, 1 1 1), (1 1, 2 2))"));
-            Assert.That(ex.Message, Does.Contain("13249"));
+            Assert.That(ex.Message, Does.Contain("5.1.67"));
         }
 
         [Test]
@@ -241,9 +260,14 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         [TestCase("CIRCULARSTRING Z EMPTY", typeof(CircularString))]
         [TestCase("COMPOUNDCURVE ZM EMPTY", typeof(CompoundCurve))]
         [TestCase("CURVEPOLYGON ZM EMPTY", typeof(CurvePolygon))]
-        [TestCase("CIRCULARSTRING ZM (0 0 5 7, 1 1 5 7, 2 0 5 7)", typeof(CircularString))]
+        [TestCase("CIRCULARSTRING Z (0 0 5, 1 1 5, 2 0 5)", typeof(CircularString))]
         [TestCase("CIRCULARSTRING M (0 0 7, 1 1 7, 2 0 7)", typeof(CircularString))]
+        [TestCase("CIRCULARSTRING ZM (0 0 5 7, 1 1 5 7, 2 0 5 7)", typeof(CircularString))]
+        [TestCase("COMPOUNDCURVE Z ((0 0 5, 1 0 5))", typeof(CompoundCurve))]
+        [TestCase("COMPOUNDCURVE M ((0 0 7, 1 0 7))", typeof(CompoundCurve))]
         [TestCase("COMPOUNDCURVE ZM ((0 0 5 7, 1 0 5 7))", typeof(CompoundCurve))]
+        [TestCase("CURVEPOLYGON Z (CIRCULARSTRING (0 0 5, 2 2 5, 4 0 5, 2 -2 5, 0 0 5))", typeof(CurvePolygon))]
+        [TestCase("CURVEPOLYGON M (CIRCULARSTRING (0 0 7, 2 2 7, 4 0 7, 2 -2 7, 0 0 7))", typeof(CurvePolygon))]
         [TestCase("CURVEPOLYGON ZM (CIRCULARSTRING ZM (0 0 5 7, 2 2 5 7, 4 0 5 7, 2 -2 5 7, 0 0 5 7))", typeof(CurvePolygon))]
         public void EmptyAndZmFormsRoundTripThroughFullOrdinateWriter(string wkt, Type expectedType)
         {
