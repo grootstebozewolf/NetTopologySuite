@@ -17,9 +17,12 @@
 //     closed half).
 //   * FAIL CLOSED -- a value passing every implemented rule THROWS, naming the
 //     missing rung: curve simplicity (the other half of "ring", §4.2.4) needs
-//     arc-arc intersection machinery, which is rung 2 -- ticket 615-h (#624)
-//     in NetTopologySuite.Proofs. An UNCHECKED true is never returned; that
-//     silent-green failure mode is what Proofs issue #522 exists to kill.
+//     arc-arc intersection machinery -- the 615-h lane. Its first rung
+//     (single-segment IsSimple, ticket 615-h, #624) is landed on
+//     CircularString; wiring decided simplicity into THIS verdict and the
+//     multi-segment case are NetTopologySuite.Proofs issue #630. An UNCHECKED
+//     true is never returned; that silent-green failure mode is what Proofs
+//     issue #522 exists to kill.
 //
 // Whole circles: a single segment with start == end is INVALID here (Desc 6);
 // the spec reserves full circles for ST_Circle (§4.2.7, parked in the zoo
@@ -174,17 +177,19 @@ namespace NetTopologySuite.Geometries.Curves
         /// <summary>
         /// The rung-2 fail-closed signal: this value passes every implemented
         /// rung-1 rule, and the remaining validity obligations (curve
-        /// simplicity per §4.2.4 / §8.2.1 — arc-arc intersection work) are
-        /// ticket 615-h (#624) in NetTopologySuite.Proofs. Returning
-        /// <c>true</c> without them would be an unchecked claim.
+        /// simplicity per §4.2.4 / §8.2.1 — arc-arc intersection work, plus
+        /// wiring already-decided simplicity into this verdict) are the
+        /// 615-h lane, continued at issue #630 in NetTopologySuite.Proofs.
+        /// Returning <c>true</c> without them would be an unchecked claim.
         /// </summary>
         private static NotSupportedException Rung2Pending(Geometry g)
         {
             return new NotSupportedException(
                 $"Arc-aware IsValid for {g.GeometryType} is partial (rung 1): this value passes the " +
-                "implemented ISO/IEC 13249-3 clause checks, but curve simplicity needs arc-arc " +
-                "intersection (rung 2, NetTopologySuite.Proofs ticket 615-h, issue #624 there). " +
-                "A checked 'true' is not possible yet; an unchecked 'true' is never returned.");
+                "implemented ISO/IEC 13249-3 clause checks, but the simplicity half of validity is " +
+                "still pending here (the 615-h lane, continued at NetTopologySuite.Proofs issue #630 — " +
+                "single-segment IsSimple is decided; wiring it into IsValid and the multi-segment case " +
+                "are #630 work). A checked 'true' is not possible yet; an unchecked 'true' is never returned.");
         }
     }
 }

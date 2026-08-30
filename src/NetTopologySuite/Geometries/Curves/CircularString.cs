@@ -13,12 +13,14 @@
 // locus (5.1.19 Desc 2b; ticket 615-e), and point-to-curve Distance is EXACT
 // over the locus via DistanceOp.Distance (5.1.41 Desc 2a; ticket 615-f --
 // curve-to-curve stays fail-closed pending arc-arc machinery, 615-h lane).
-// The remaining metrics and analytic ops (Area, IsSimple, Centroid,
-// InteriorPoint) fail closed with NotSupportedException until their
-// arc-aware implementations land; Linearize() is the explicit chord escape
-// hatch.
+// The remaining metrics and analytic ops (Area, Centroid, InteriorPoint)
+// fail closed with NotSupportedException until their arc-aware
+// implementations land; Linearize() is the explicit chord escape hatch.
 // IsValid is rung-1 partial (ticket 615-g): definite-false for implemented
-// clause rules, fail-closed naming rung 2 (ticket 615-h) otherwise.
+// clause rules, fail-closed naming the simplicity rung otherwise.
+// IsSimple is rung-1 partial (ticket 615-h, #624): the single-segment case
+// is decided over the locus, the multi-segment case stays fail-closed
+// pending arc-arc intersection (NetTopologySuite.Proofs #630).
 
 using System;
 using System.Collections.Generic;
@@ -189,6 +191,53 @@ namespace NetTopologySuite.Geometries.Curves
         /// <c>CIRCULARSTRING (0 0, 1 1, 2 0, 1 -1, 0 0)</c>.
         /// </summary>
         public override bool IsValid => CurveValidity.IsValidRung1(this);
+
+        /// <summary>
+        /// Arc-aware simplicity, rung 1: the single-segment case is decided
+        /// (ISO/IEC 13249-3 §4.2.4 simplicity over the §7.3.1 Desc 8 locus;
+        /// NetTopologySuite.Proofs ticket 615-h, issue #624 there).
+        /// <list type="bullet">
+        /// <item><description>Empty: simple (no point to self-meet; matches
+        /// the classical <c>IsSimpleOp</c> convention).</description></item>
+        /// <item><description>One non-degenerate arc segment: simple — the
+        /// locus is an arc of the circumcircle with sweep in (0, 2π), so the
+        /// angle parameterization is injective; <c>p0 == p2</c> would zero
+        /// the orientation cross, hence the endpoints are distinct. (Proofs
+        /// companion: <c>theories/CurveRingSimple.v</c> — a one-segment ring
+        /// has no non-adjacent pair to meet.)</description></item>
+        /// <item><description>One collinear segment with distinct endpoints:
+        /// simple — the locus is the start–end chord (Desc 8b), a straight
+        /// segment.</description></item>
+        /// <item><description>Everything else stays fail-closed: the
+        /// degenerate collinear segment with <c>p0 == p2</c> (its chord
+        /// collapses to a point; Desc 6 marks the closed single segment
+        /// invalid anyway), and the multi-segment case, which needs the
+        /// arc-arc intersection rung (NetTopologySuite.Proofs issue #630).
+        /// Never an unchecked <c>true</c>.</description></item>
+        /// </list>
+        /// </summary>
+        public override bool IsSimple
+        {
+            get
+            {
+                if (IsEmpty)
+                    return true;
+                if (_points.Count == 3)
+                {
+                    var p0 = _points.GetCoordinate(0);
+                    var p1 = _points.GetCoordinate(1);
+                    var p2 = _points.GetCoordinate(2);
+                    if (CircularArcGeometry.TryCircle(p0, p1, p2, out _, out _))
+                        return true;
+                    if (!p0.Equals2D(p2))
+                        return true;
+                    throw CurvedGeometry.NotYetSupported(this,
+                        "IsSimple for a degenerate single segment (collinear controls with start == end)");
+                }
+                throw CurvedGeometry.NotYetSupported(this,
+                    "IsSimple beyond one segment (needs arc-arc intersection: NetTopologySuite.Proofs issue #630)");
+            }
+        }
 
         /// <summary>
         /// The boundary of a curve per the Mod-2 rule: empty when the curve is empty
