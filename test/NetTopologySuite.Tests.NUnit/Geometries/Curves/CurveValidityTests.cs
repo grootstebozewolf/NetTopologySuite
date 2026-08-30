@@ -64,6 +64,23 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
+        public void IsValid_CoincidentIntermediate_IsCheckedTrueViaDesc8b()
+        {
+            // Review-pinned sub-reading (615-h rung 3): an intermediate
+            // coincident with an endpoint makes the triple exactly collinear
+            // (the orientation cross is exactly zero), so §7.3.1 Desc 8b
+            // applies — the segment is the start–end chord, and "collinear
+            // inputs are legal, not invalid" (§2.1 of the research doc).
+            // Desc 6 binds only the segment's START and END points.
+            var chordLike = Cs((0, 0), (0, 0), (2, 0));
+            Assert.That(chordLike.IsValid, Is.True);
+            Assert.That(chordLike.IsSimple, Is.True, "the chord (0,0)-(2,0)");
+
+            var multi = Cs((0, 0), (0, 0), (2, 0), (3, 1), (4, 0));
+            Assert.That(multi.IsValid, Is.True);
+        }
+
+        [Test]
         public void IsValid_NonFiniteCoordinate_IsDefiniteFalse()
         {
             // Parity with classical IsValidOp, which marks non-finite
