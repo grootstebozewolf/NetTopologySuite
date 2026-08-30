@@ -45,9 +45,28 @@ namespace NetTopologySuite.Geometries.Curves
                 radius = double.NaN;
                 return false;
             }
+            // Canonicalize the triple (lexicographic order) before computing
+            // the circle, so arcs carried by the same circle through the same
+            // control points get bit-identical centre/radius regardless of
+            // traversal order — the exact-cocircular arm of the simplicity
+            // kernel compares circles by equality (615-h rung 3, #634 review
+            // scope item from #630).
+            Sort3(ref p0, ref p1, ref p2);
             centre = GeomTriangle.Circumcentre(p0, p1, p2);
             radius = centre.Distance(p0);
             return true;
+        }
+
+        private static void Sort3(ref Coordinate a, ref Coordinate b, ref Coordinate c)
+        {
+            if (Lex(b, a)) (a, b) = (b, a);
+            if (Lex(c, b)) (b, c) = (c, b);
+            if (Lex(b, a)) (a, b) = (b, a);
+        }
+
+        private static bool Lex(Coordinate p, Coordinate q)
+        {
+            return p.X < q.X || (p.X == q.X && p.Y < q.Y);
         }
 
         /// <summary>

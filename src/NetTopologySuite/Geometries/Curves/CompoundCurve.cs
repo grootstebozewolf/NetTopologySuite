@@ -231,13 +231,33 @@ namespace NetTopologySuite.Geometries.Curves
         }
 
         /// <summary>
-        /// Arc-aware validity, rung 1 (<see cref="CurveValidity"/>; ticket
-        /// 615-g): definite <c>false</c> when an implemented ISO/IEC 13249-3
-        /// rule is violated (component well-formedness §7.10.1 Desc 3,
-        /// contiguity Desc 7); otherwise throws naming the missing simplicity
-        /// rung (ticket 615-h, #624). Never an unchecked <c>true</c>.
+        /// Arc-aware validity (<see cref="CurveValidity"/>; tickets 615-g,
+        /// 615-h #634): definite <c>false</c> when an implemented ISO/IEC
+        /// 13249-3 rule is violated (component well-formedness §7.10.1
+        /// Desc 3, contiguity Desc 7), checked <c>true</c> otherwise —
+        /// those two rules are §7.10.1's complete validity obligations
+        /// ("simple ∧ closed ⇒ ring", Desc 8, is a definition, not a
+        /// constraint).
         /// </summary>
-        public override bool IsValid => CurveValidity.IsValidRung1(this);
+        public override bool IsValid => CurveValidity.IsValid(this);
+
+        /// <summary>
+        /// Arc-aware simplicity over the concatenated component chain
+        /// (§4.2.4 over the §7.3.1 Desc 8 loci; ticket 615-h rung 3,
+        /// #634): simple iff no two chain segments meet outside the permitted
+        /// shared vertices (see <see cref="CurveSimplicity"/>). LineString
+        /// components contribute one chord per consecutive coordinate pair.
+        /// Fail-closed residues are the kernel's, named in the throws.
+        /// </summary>
+        public override bool IsSimple
+        {
+            get
+            {
+                if (IsEmpty)
+                    return true;
+                return CurveSimplicity.IsSimple(this);
+            }
+        }
 
         /// <summary>
         /// The boundary of a curve per the Mod-2 rule: empty when the curve is empty
