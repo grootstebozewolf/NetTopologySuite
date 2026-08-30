@@ -87,6 +87,17 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
+        public void ReadDropsEmptyCompoundCurveComponents()
+        {
+            // An EMPTY component is grammatical and contributes nothing to the
+            // point set; intake drops it (ADR-0005, ticket 615-c).
+            var cc = (CompoundCurve)new WKTReader().Read(
+                "COMPOUNDCURVE ((0 0, 1 0), CIRCULARSTRING EMPTY)");
+            Assert.That(cc.Curves.Count, Is.EqualTo(1));
+            Assert.That(cc.AsText(), Is.EqualTo("COMPOUNDCURVE ((0 0, 1 0))"));
+        }
+
+        [Test]
         public void ReadFlattensNestedCompoundCurvesAmongSiblings()
         {
             var cc = (CompoundCurve)new WKTReader().Read(

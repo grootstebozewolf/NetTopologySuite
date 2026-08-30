@@ -93,6 +93,11 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 throw new ArgumentException("shell is empty but holes are not", nameof(holes));
             }
+            // Intake enforces representability only (ADR-0005 in
+            // NetTopologySuite.Proofs): rings must be CLOSED (the closed half
+            // of ISO/IEC 13249-3 §8.2.1 Desc 2-3) -- an unclosed ring bounds
+            // nothing. The simplicity half of "ring", and every further ISO
+            // "shall", belongs to arc-aware ST_IsValid (tickets 615-g/h).
             if (!shell.IsEmpty && !shell.IsClosed)
             {
                 throw new ArgumentException(
