@@ -36,10 +36,14 @@
 // five-point CIRCULARSTRING idiom -- Desc-6-clean, and since #634 a checked
 // VALID value (and, since #630, a checked simple ring).
 //
-// MultiCurve / MultiSurface deliberately have NO override here: their
-// members reach IsValidOp's default arm, which throws (fail-closed with a
-// bare type name). Wiring them through is NetTopologySuite.Proofs issue
-// #639; no curve-containing geometry has a silent-true path either way.
+// MultiCurve / MultiSurface have NO override here yet, and that is a HOLE,
+// not a guard (review-demonstrated, 615-h rung 3): IsValidOp's
+// GeometryCollection arm checks members individually, so a CURVED member
+// throws fail-closed, but an all-classical-member MultiCurve silently takes
+// classical GC validity, and an all-classical MultiSurface additionally
+// MISSES the surface-pair conditions (two overlapping polygons answer true
+// where the same pair as MultiPolygon answers false). Wiring real verdicts
+// is NetTopologySuite.Proofs issue #639.
 
 using System;
 
@@ -159,7 +163,12 @@ namespace NetTopologySuite.Geometries.Curves
             for (int i = 0; i + 2 < count; i += 2)
             {
                 // §7.3.1 Desc 6: the end point of each segment shall be
-                // distinct from its start point.
+                // distinct from its start point. Desc 6 binds ONLY start and
+                // end: an intermediate coincident with an endpoint makes the
+                // triple exactly collinear (the cross is exactly zero), so
+                // Desc 8b applies and the segment is the legal start–end
+                // chord — the sub-reading of record, pinned in the research
+                // doc §2.1 and by IsValid_CoincidentIntermediate_… tests.
                 if (seq.GetCoordinate(i).Equals2D(seq.GetCoordinate(i + 2)))
                 {
                     reason = "ISO/IEC 13249-3 §7.3.1 Desc 6: arc segment " + (i / 2) +
