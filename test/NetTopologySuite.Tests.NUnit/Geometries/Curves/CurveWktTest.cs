@@ -74,10 +74,41 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void ReadRejectsNestedCompoundCurves()
+        public void ReadFlattensNestedCompoundCurves()
         {
-            Assert.Throws<ParseException>(() =>
-                new WKTReader().Read("COMPOUNDCURVE (COMPOUNDCURVE ((0 0, 1 0)))"));
+            // §5.1.67 <curve text> admits a tagged COMPOUNDCURVE component; the
+            // value is spliced into the flat list (ADR-0005), so the writer's
+            // output is the flat grammar-clean form.
+            var cc = (CompoundCurve)new WKTReader().Read(
+                "COMPOUNDCURVE (COMPOUNDCURVE ((0 0, 1 0)))");
+            Assert.That(cc.Curves.Count, Is.EqualTo(1));
+            Assert.That(cc.Curves[0], Is.InstanceOf<LineString>());
+            Assert.That(cc.AsText(), Is.EqualTo("COMPOUNDCURVE ((0 0, 1 0))"));
+        }
+
+        [Test]
+        public void ReadFlattensNestedCompoundCurvesAmongSiblings()
+        {
+            var cc = (CompoundCurve)new WKTReader().Read(
+                "COMPOUNDCURVE ((0 0, 1 0), COMPOUNDCURVE (CIRCULARSTRING (1 0, 2 1, 3 0), (3 0, 4 0)))");
+            Assert.That(cc.Curves.Count, Is.EqualTo(3));
+            Assert.That(cc.Curves[0], Is.InstanceOf<LineString>());
+            Assert.That(cc.Curves[1], Is.InstanceOf<CircularString>());
+            Assert.That(cc.Curves[2], Is.InstanceOf<LineString>());
+            Assert.That(cc.AsText(), Is.EqualTo(
+                "COMPOUNDCURVE ((0 0, 1 0), CIRCULARSTRING (1 0, 2 1, 3 0), (3 0, 4 0))"));
+        }
+
+        [Test]
+        public void ReadFlattensNestedCompoundCurveInsideCurvePolygonRing()
+        {
+            // §5.1.67 <ring text> has the same alternatives as <curve text>,
+            // nested COMPOUNDCURVE included.
+            var cp = (CurvePolygon)new WKTReader().Read(
+                "CURVEPOLYGON (COMPOUNDCURVE ((0 0, 1 0), COMPOUNDCURVE ((1 0, 1 1)), (1 1, 0 0)))");
+            var shell = (CompoundCurve)cp.ExteriorRing;
+            Assert.That(shell.Curves.Count, Is.EqualTo(3));
+            Assert.That(shell.IsClosed, Is.True);
         }
 
         [Test]
