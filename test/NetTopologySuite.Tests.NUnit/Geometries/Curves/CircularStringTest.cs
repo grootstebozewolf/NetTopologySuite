@@ -186,21 +186,20 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void IsSimpleFrontierAfterSingleSegmentRungLanded()
+        public void IsSimpleFrontierAfterMultiSegmentRungLanded()
         {
-            // Flipped by ticket 615-h rung 1 (single-segment simplicity):
-            // an open single-segment arc is simple — its locus is an arc of
-            // its circumcircle with sweep in (0, 2π), injective in the angle
-            // (§7.3.1 Desc 8a; §4.2.4). IsRing = closed & simple follows as a
-            // checked false. The fail-closed frontier that remains is the
-            // multi-segment case, which needs arc-arc intersection.
+            // Rung 1 (615-h, #624): the open single-segment arc decided.
+            // Rung 2 (#630): multi-segment CircularString decided via the
+            // pairwise contact kernel — the closed five-point idiom is now a
+            // checked simple ring (value contracts in CurveSimplicityTests).
+            // CompoundCurve / CurvePolygon simplicity stay fail-closed.
             var open = Make((1, 0), (0, 1), (-1, 0));
             Assert.That(open.IsSimple, Is.True);
             Assert.That(open.IsRing, Is.False);
 
             var closed = Make((1, 0), (0, 1), (-1, 0), (0, -1), (1, 0));
-            Assert.That(() => closed.IsSimple, Throws.TypeOf<NotSupportedException>());
-            Assert.That(() => closed.IsRing, Throws.TypeOf<NotSupportedException>());
+            Assert.That(closed.IsSimple, Is.True);
+            Assert.That(closed.IsRing, Is.True);
         }
 
         [Test]

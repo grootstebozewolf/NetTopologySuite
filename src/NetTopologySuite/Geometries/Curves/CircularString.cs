@@ -18,9 +18,11 @@
 // implementations land; Linearize() is the explicit chord escape hatch.
 // IsValid is rung-1 partial (ticket 615-g): definite-false for implemented
 // clause rules, fail-closed naming the simplicity rung otherwise.
-// IsSimple is rung-1 partial (ticket 615-h, #624): the single-segment case
-// is decided over the locus, the multi-segment case stays fail-closed
-// pending arc-arc intersection (NetTopologySuite.Proofs #630).
+// IsSimple is decided over the locus for every segment count (ticket 615-h:
+// rung 1 #624, rung 2 #630 -- pairwise contact kernel mirroring the Proofs
+// oracle's RING_SIMPLE lane), with two fail-closed residues named in the
+// throws: degenerate closed segments (Desc 6) and the nearly-cocircular
+// ambiguity band. CompoundCurve/CurvePolygon simplicity are #634.
 
 using System;
 using System.Collections.Generic;
@@ -193,27 +195,26 @@ namespace NetTopologySuite.Geometries.Curves
         public override bool IsValid => CurveValidity.IsValidRung1(this);
 
         /// <summary>
-        /// Arc-aware simplicity, rung 1: the single-segment case is decided
-        /// (ISO/IEC 13249-3 §4.2.4 simplicity over the §7.3.1 Desc 8 locus;
-        /// NetTopologySuite.Proofs ticket 615-h, issue #624 there). The
-        /// verdict is purely combinatorial on the endpoints — it never needs
-        /// the circumcircle:
+        /// Arc-aware simplicity over the locus (ISO/IEC 13249-3 §4.2.4 over
+        /// §7.3.1 Desc 8; NetTopologySuite.Proofs ticket 615-h — rung 1
+        /// single-segment #624, rung 2 multi-segment #630):
         /// <list type="bullet">
         /// <item><description>Empty: simple (no point to self-meet; matches
         /// the classical <c>IsSimpleOp</c> convention).</description></item>
-        /// <item><description>One segment with distinct endpoints: simple.
-        /// Non-collinear controls give an arc of the circumcircle with sweep
-        /// in (0, 2π), injective in the angle (Desc 8a); collinear controls
-        /// give the start–end chord (Desc 8b), a straight segment. (Proofs
-        /// companion: <c>theories/CurveRingSimple.v</c> — a one-segment ring
-        /// has no non-adjacent pair to meet.)</description></item>
-        /// <item><description>Everything else stays fail-closed: the
-        /// degenerate closed single segment (<c>p0 == p2</c>, invalid under
-        /// Desc 6 — decided FIRST, because a floating-point orientation test
-        /// can be fooled by overflow: (−1e308,0) (1e308,1) (−1e308,0) makes
-        /// the cross product NaN, not 0), and the multi-segment case, which
-        /// needs the arc-arc intersection rung (NetTopologySuite.Proofs
-        /// issue #630). Never an unchecked <c>true</c>.</description></item>
+        /// <item><description>One segment with distinct endpoints: simple —
+        /// an injective arc (Desc 8a) or the start–end chord (Desc 8b).
+        /// Endpoint equality is decided before any float orientation test
+        /// (an overflow can make the cross NaN, not 0).</description></item>
+        /// <item><description>Multiple segments: simple iff no two segment
+        /// loci meet outside the permitted shared vertices — consecutive
+        /// segments at their connecting vertex, plus the chain's start/end
+        /// point when the value is closed (<see cref="CurveSimplicity"/>;
+        /// the pairwise contact kernel lives in
+        /// <see cref="CircularArcGeometry.SegmentPairContacts"/>).</description></item>
+        /// <item><description>Fail-closed residues, named in the throws: a
+        /// degenerate closed segment (start == end, invalid under Desc 6)
+        /// and the nearly-cocircular ambiguity band. Never an unchecked
+        /// <c>true</c>.</description></item>
         /// </list>
         /// </summary>
         public override bool IsSimple
@@ -222,15 +223,7 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 if (IsEmpty)
                     return true;
-                if (_points.Count == 3)
-                {
-                    if (_points.GetCoordinate(0).Equals2D(_points.GetCoordinate(2)))
-                        throw CurvedGeometry.NotYetSupported(this,
-                            "IsSimple for a degenerate closed single segment (start == end, invalid under 7.3.1 Desc 6)");
-                    return true;
-                }
-                throw CurvedGeometry.NotYetSupported(this,
-                    "IsSimple beyond one segment (needs arc-arc intersection: NetTopologySuite.Proofs issue #630)");
+                return CurveSimplicity.IsSimple(this);
             }
         }
 

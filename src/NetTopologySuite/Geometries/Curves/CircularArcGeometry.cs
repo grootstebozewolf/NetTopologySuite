@@ -160,5 +160,236 @@ namespace NetTopologySuite.Geometries.Curves
         {
             return (p1.X - p0.X) * (p2.Y - p0.Y) - (p1.Y - p0.Y) * (p2.X - p0.X);
         }
+
+        // ---------------------------------------------------------------
+        // Pairwise segment contacts (NetTopologySuite.Proofs #615, ticket
+        // 615-h rung 2, issue #630 there): the point set where two segment
+        // loci meet, mirroring the composition of the Proofs oracle's
+        // RING_SIMPLE lane (arc-arc via the radical line, exact-cocircular
+        // via angular intervals, arc-chord via the circle-line quadratic,
+        // chord-chord via RobustLineIntersector).
+        // ---------------------------------------------------------------
+
+        /// <summary>Outcome of <see cref="SegmentPairContacts"/>.</summary>
+        public enum SegmentPairResult
+        {
+            /// <summary>The contact set was computed.</summary>
+            Decided,
+
+            /// <summary>
+            /// The two arcs' circumcircles are too close to distinguish from
+            /// one circle at double precision, but not exactly equal — the
+            /// kernel refuses to guess between "same circle, interval
+            /// overlap" and "two circles, radical line" (a wrong guess here
+            /// flips a 1-dimensional overlap into nothing, or vice versa).
+            /// </summary>
+            AmbiguousCocircular,
+        }
+
+        /// <summary>
+        /// Relative tolerance for the near-cocircular refusal band and for
+        /// vertex matching by callers — the same 1e-9 relative epsilon the
+        /// oracle's RING_SIMPLE lane uses for its permitted-vertex filter.
+        /// </summary>
+        public const double RelativeTolerance = 1e-9;
+
+        /// <summary>
+        /// Computes the contact points of two segment loci (each segment an
+        /// arc per Desc 8a or, when collinear, its start–end chord per
+        /// Desc 8b). <paramref name="overlap"/> reports a 1-dimensional
+        /// shared piece (collinear chord overlap, or cocircular arcs with
+        /// overlapping angular intervals); when it is set, the contact list
+        /// is not populated further. Degenerate segments (start == end) are
+        /// the caller's job to pre-filter.
+        /// </summary>
+        public static SegmentPairResult SegmentPairContacts(
+            Coordinate p0, Coordinate p1, Coordinate p2,
+            Coordinate q0, Coordinate q1, Coordinate q2,
+            System.Collections.Generic.List<Coordinate> contacts, out bool overlap)
+        {
+            overlap = false;
+            bool aIsArc = TryCircle(p0, p1, p2, out var ca, out double ra);
+            bool bIsArc = TryCircle(q0, q1, q2, out var cb, out double rb);
+
+            if (!aIsArc && !bIsArc)
+            {
+                ChordChordContacts(p0, p2, q0, q2, contacts, ref overlap);
+                return SegmentPairResult.Decided;
+            }
+            if (aIsArc && !bIsArc)
+            {
+                ArcChordContacts(ca, ra, ArcOf(p0, p1, p2, ca), q0, q2, contacts);
+                return SegmentPairResult.Decided;
+            }
+            if (!aIsArc)
+            {
+                ArcChordContacts(cb, rb, ArcOf(q0, q1, q2, cb), p0, p2, contacts);
+                return SegmentPairResult.Decided;
+            }
+
+            var arcA = ArcOf(p0, p1, p2, ca);
+            var arcB = ArcOf(q0, q1, q2, cb);
+            bool exactlyCocircular = ca.Equals2D(cb) && ra == rb;
+            if (!exactlyCocircular)
+            {
+                double tol = RelativeTolerance * (1 + System.Math.Max(ra, rb));
+                if (ca.Distance(cb) <= tol && System.Math.Abs(ra - rb) <= tol)
+                    return SegmentPairResult.AmbiguousCocircular;
+            }
+            if (exactlyCocircular)
+                CocircularContacts(ca, arcA, p0, p2, arcB, q0, q2, contacts, ref overlap);
+            else
+                TwoCircleContacts(ca, ra, arcA, cb, rb, arcB, contacts);
+            return SegmentPairResult.Decided;
+        }
+
+        /// <summary>Sweep frame of one arc: start angle, width, direction.</summary>
+        private readonly struct ArcFrame
+        {
+            public readonly double A0;
+            public readonly double Sweep;
+            public readonly bool Ccw;
+
+            public ArcFrame(double a0, double sweep, bool ccw)
+            {
+                A0 = a0;
+                Sweep = sweep;
+                Ccw = ccw;
+            }
+        }
+
+        private static ArcFrame ArcOf(Coordinate p0, Coordinate p1, Coordinate p2, Coordinate centre)
+        {
+            bool ccw = OrientationIndex(p0, p1, p2) > 0d;
+            double a0 = System.Math.Atan2(p0.Y - centre.Y, p0.X - centre.X);
+            return new ArcFrame(a0, SweepAngle(p0, p2, centre, ccw), ccw);
+        }
+
+        /// <summary>
+        /// Endpoint-inclusive sweep membership — the same normalization
+        /// convention as <see cref="SegmentDistance"/> and
+        /// <see cref="ExpandEnvelope"/>.
+        /// </summary>
+        private static bool OnArc(Coordinate centre, ArcFrame arc, double x, double y)
+        {
+            double theta = System.Math.Atan2(y - centre.Y, x - centre.X);
+            double delta = AngleUtility.NormalizePositive(arc.Ccw ? theta - arc.A0 : arc.A0 - theta);
+            return delta <= arc.Sweep;
+        }
+
+        private static void ChordChordContacts(
+            Coordinate p0, Coordinate p2, Coordinate q0, Coordinate q2,
+            System.Collections.Generic.List<Coordinate> contacts, ref bool overlap)
+        {
+            var li = new RobustLineIntersector();
+            li.ComputeIntersection(p0, p2, q0, q2);
+            if (li.IntersectionNum == 2)
+            {
+                var i0 = li.GetIntersection(0);
+                var i1 = li.GetIntersection(1);
+                if (i0.Equals2D(i1))
+                    contacts.Add(i0.Copy());
+                else
+                    overlap = true;
+            }
+            else if (li.IntersectionNum == 1)
+            {
+                contacts.Add(li.GetIntersection(0).Copy());
+            }
+        }
+
+        private static void ArcChordContacts(
+            Coordinate centre, double radius, ArcFrame arc,
+            Coordinate q0, Coordinate q2,
+            System.Collections.Generic.List<Coordinate> contacts)
+        {
+            double dx = q2.X - q0.X, dy = q2.Y - q0.Y;
+            double fx = q0.X - centre.X, fy = q0.Y - centre.Y;
+            double a = dx * dx + dy * dy;
+            double b = 2 * (fx * dx + fy * dy);
+            double c = fx * fx + fy * fy - radius * radius;
+            double disc = b * b - 4 * a * c;
+            if (disc < 0)
+                return;
+            double sq = System.Math.Sqrt(disc);
+            for (int k = 0; k < (sq == 0d ? 1 : 2); k++)
+            {
+                double t = (-b + (k == 0 ? -sq : sq)) / (2 * a);
+                if (t < 0 || t > 1)
+                    continue;
+                double x = q0.X + t * dx, y = q0.Y + t * dy;
+                if (OnArc(centre, arc, x, y))
+                    contacts.Add(new Coordinate(x, y));
+            }
+        }
+
+        private static void TwoCircleContacts(
+            Coordinate ca, double ra, ArcFrame arcA,
+            Coordinate cb, double rb, ArcFrame arcB,
+            System.Collections.Generic.List<Coordinate> contacts)
+        {
+            double d = ca.Distance(cb);
+            double a = (d * d + ra * ra - rb * rb) / (2 * d);
+            double h2 = ra * ra - a * a;
+            if (h2 < 0)
+                return;
+            double ux = (cb.X - ca.X) / d, uy = (cb.Y - ca.Y) / d;
+            double bx = ca.X + a * ux, by = ca.Y + a * uy;
+            double h = System.Math.Sqrt(h2);
+            for (int k = 0; k < (h == 0d ? 1 : 2); k++)
+            {
+                double sign = k == 0 ? 1 : -1;
+                double x = bx + sign * h * -uy;
+                double y = by + sign * h * ux;
+                if (OnArc(ca, arcA, x, y) && OnArc(cb, arcB, x, y))
+                    contacts.Add(new Coordinate(x, y));
+            }
+        }
+
+        private static void CocircularContacts(
+            Coordinate centre,
+            ArcFrame arcA, Coordinate p0, Coordinate p2,
+            ArcFrame arcB, Coordinate q0, Coordinate q2,
+            System.Collections.Generic.List<Coordinate> contacts, ref bool overlap)
+        {
+            // Normalize each arc to a CCW interval [s, s + w] on the shared
+            // circle. Positive-length overlap iff one interval's start lies
+            // in the other's interior (start coincidence included) — which
+            // also catches the two-reflex case w_A + w_B > 2π.
+            double sA = arcA.Ccw ? arcA.A0 : AngleOf(p2, centre);
+            double sB = arcB.Ccw ? arcB.A0 : AngleOf(q2, centre);
+            if (AngleUtility.NormalizePositive(sB - sA) < arcA.Sweep
+                || AngleUtility.NormalizePositive(sA - sB) < arcB.Sweep)
+            {
+                overlap = true;
+                return;
+            }
+
+            // Touch-only: report endpoints of one arc lying (inclusively) on
+            // the other, as the ORIGINAL endpoint coordinates.
+            AddEndpointContact(q0, centre, arcA, contacts);
+            AddEndpointContact(q2, centre, arcA, contacts);
+            AddEndpointContact(p0, centre, arcB, contacts);
+            AddEndpointContact(p2, centre, arcB, contacts);
+        }
+
+        private static void AddEndpointContact(
+            Coordinate endpoint, Coordinate centre, ArcFrame other,
+            System.Collections.Generic.List<Coordinate> contacts)
+        {
+            if (!OnArc(centre, other, endpoint.X, endpoint.Y))
+                return;
+            foreach (var existing in contacts)
+            {
+                if (existing.Equals2D(endpoint))
+                    return;
+            }
+            contacts.Add(endpoint.Copy());
+        }
+
+        private static double AngleOf(Coordinate p, Coordinate centre)
+        {
+            return System.Math.Atan2(p.Y - centre.Y, p.X - centre.X);
+        }
     }
 }

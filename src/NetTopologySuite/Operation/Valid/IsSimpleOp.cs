@@ -162,7 +162,15 @@ namespace NetTopologySuite.Operation.Valid
         {
             if (geom.IsEmpty) return true;
             if (CurvedGeometry.IsCurvedType(geom))
+            {
+                // Arc-aware simplicity is decided for CircularString (the
+                // 615-h lane in NetTopologySuite.Proofs); its override throws
+                // for its own fail-closed residues. The other curve types
+                // stay fail-closed pending issue #634 there.
+                if (geom is Geometries.Curves.CircularString circularString)
+                    return circularString.IsSimple;
                 throw CurvedGeometry.NotYetSupported(geom, "IsSimple");
+            }
             switch (geom)
             {
                 case Point _:
