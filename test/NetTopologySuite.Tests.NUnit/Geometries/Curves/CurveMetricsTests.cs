@@ -199,6 +199,112 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(env.MaxY, Is.EqualTo(2.0).Within(1e-12));
         }
 
+        // --- Distance (ticket 615-f): §5.1.41 Desc 2a — intersect→0 is
+        // normative with no latitude; otherwise the minimum against the arc
+        // locus (project onto the circle, clamp to the sweep). ---------------
+
+        [Test]
+        public void Distance_CentreOfUnitSemicircle_IsRadius()
+        {
+            // The former Red_Distance_..._CentreOfUnitSemicircle_IsRadius
+            // contract, flipped green: every locus point is at distance r.
+            var arc = Cs((1, 0), (0, 1), (-1, 0));
+            var centre = _factory.CreatePoint(new Coordinate(0, 0));
+            double d = NetTopologySuite.Operation.Distance.DistanceOp.Distance(centre, arc);
+            Assert.That(double.IsFinite(d), Is.True);
+            Assert.That(d, Is.EqualTo(1.0).Within(1e-9));
+        }
+
+        [Test]
+        public void Distance_Endpoint_IsZero()
+        {
+            // The former Red_Distance_..._Endpoint_IsZero contract, flipped
+            // green: (1,0) lies on the arc, and intersect→0 is Desc 2a-iii.
+            var arc = Cs((1, 0), (0, 1), (-1, 0));
+            var end = _factory.CreatePoint(new Coordinate(1, 0));
+            double d = NetTopologySuite.Operation.Distance.DistanceOp.Distance(end, arc);
+            Assert.That(d, Is.EqualTo(0.0).Within(1e-12));
+        }
+
+        [Test]
+        public void Distance_PointOnArcMidSweep_IsZeroExactly()
+        {
+            // On-locus mid-sweep: zero by Desc 2a-iii, not by tolerance.
+            var arc = Cs((1, 0), (0, 1), (-1, 0));
+            var top = _factory.CreatePoint(new Coordinate(0, 1));
+            Assert.That(NetTopologySuite.Operation.Distance.DistanceOp.Distance(top, arc),
+                Is.EqualTo(0.0));
+        }
+
+        [Test]
+        public void Distance_ProjectionInsideSweep_IsTheRadialGap()
+        {
+            var arc = Cs((1, 0), (0, 1), (-1, 0));
+            var above = _factory.CreatePoint(new Coordinate(0, 2));
+            Assert.That(NetTopologySuite.Operation.Distance.DistanceOp.Distance(above, arc),
+                Is.EqualTo(1.0).Within(1e-12));
+        }
+
+        [Test]
+        public void Distance_ProjectionOutsideSweep_UsesTheNearestEndpoint()
+        {
+            // (0,-2) projects to 270°, outside the upper sweep: the nearest
+            // locus point is an endpoint, at distance √5.
+            var arc = Cs((1, 0), (0, 1), (-1, 0));
+            var below = _factory.CreatePoint(new Coordinate(0, -2));
+            Assert.That(NetTopologySuite.Operation.Distance.DistanceOp.Distance(below, arc),
+                Is.EqualTo(Math.Sqrt(5)).Within(1e-12));
+        }
+
+        [Test]
+        public void Distance_CollinearSegment_IsTheSegmentDistance()
+        {
+            // Desc 8b: the locus is the chord (0,0)–(2,2); nearest to (2,0)
+            // is (1,1), at distance √2.
+            var arc = Cs((0, 0), (1, 1), (2, 2));
+            var pt = _factory.CreatePoint(new Coordinate(2, 0));
+            Assert.That(NetTopologySuite.Operation.Distance.DistanceOp.Distance(pt, arc),
+                Is.EqualTo(Math.Sqrt(2)).Within(1e-12));
+        }
+
+        [Test]
+        public void Distance_CompoundCurve_IsTheComponentMinimum()
+        {
+            var line = _factory.CreateLineString(new[]
+            {
+                new Coordinate(0, 0), new Coordinate(1, 0)
+            });
+            var arc = Cs((1, 0), (2, 1), (3, 0)); // centre (2,0), r=1
+            var cc = new CompoundCurve(new Curve[] { line, arc }, _factory);
+            var pt = _factory.CreatePoint(new Coordinate(2, 3));
+            // Arc: radial gap |3-1| = 2; line: √10 — the arc wins.
+            Assert.That(NetTopologySuite.Operation.Distance.DistanceOp.Distance(pt, cc),
+                Is.EqualTo(2.0).Within(1e-12));
+        }
+
+        [Test]
+        public void Distance_OperandOrderIsSymmetric()
+        {
+            var arc = Cs((1, 0), (0, 1), (-1, 0));
+            var pt = _factory.CreatePoint(new Coordinate(0, 2));
+            double d0 = NetTopologySuite.Operation.Distance.DistanceOp.Distance(pt, arc);
+            double d1 = NetTopologySuite.Operation.Distance.DistanceOp.Distance(arc, pt);
+            Assert.That(d1, Is.EqualTo(d0));
+            // And through the Geometry.Distance instance surface.
+            Assert.That(pt.Distance(arc), Is.EqualTo(d0));
+        }
+
+        [Test]
+        public void Distance_ArcToArc_StaysFailClosed()
+        {
+            // Curve×curve needs arc-arc machinery (the 615-h lane); an
+            // unchecked chord answer is never returned.
+            var a = Cs((1, 0), (0, 1), (-1, 0));
+            var b = Cs((3, 0), (4, 1), (5, 0));
+            Assert.That(() => NetTopologySuite.Operation.Distance.DistanceOp.Distance(a, b),
+                Throws.TypeOf<NotSupportedException>());
+        }
+
         [Test]
         public void Envelope_CompoundCurve_IsTheComponentUnion()
         {

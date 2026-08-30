@@ -59,13 +59,19 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         };
 
         [Test]
-        public void DistanceThrowsFromBothOperandPositions()
+        public void DistanceFailClosedFrontierAfterPointCurveLanded()
         {
+            // Flipped by ticket 615-f: point-to-curve Distance is exact from
+            // both operand positions (value contracts in CurveMetricsTests).
+            // The fail-closed frontier that remains: curve-to-curve pairs and
+            // the constructor-based surfaces (NearestPoints, IsWithinDistance),
+            // which need the nearest-point witness / arc-arc machinery.
             var arc = Semicircle();
             var point = _factory.CreatePoint(new Coordinate(0, 0));
 
-            Assert.That(() => arc.Distance(point), Throws.TypeOf<NotSupportedException>());
-            Assert.That(() => point.Distance(arc), Throws.TypeOf<NotSupportedException>());
+            Assert.That(arc.Distance(point), Is.EqualTo(1.0).Within(1e-12));
+            Assert.That(point.Distance(arc), Is.EqualTo(1.0).Within(1e-12));
+            Assert.That(() => arc.Distance(Compound()), Throws.TypeOf<NotSupportedException>());
             Assert.That(() => DistanceOp.NearestPoints(point, arc), Throws.TypeOf<NotSupportedException>());
             Assert.That(() => DistanceOp.IsWithinDistance(point, arc, 1.0), Throws.TypeOf<NotSupportedException>());
         }

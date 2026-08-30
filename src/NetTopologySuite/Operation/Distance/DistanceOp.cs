@@ -27,11 +27,23 @@ namespace NetTopologySuite.Operation.Distance
         /// <summary>
         /// Compute the distance between the closest points of two geometries.
         /// </summary>
+        /// <remarks>
+        /// For a <c>Point</c> against a <c>CircularString</c> or
+        /// <c>CompoundCurve</c> (either order) the answer is exact over the
+        /// arc locus (ISO/IEC 13249-3 §5.1.41 Desc 2a; ticket 615-f in
+        /// NetTopologySuite.Proofs). Every other curve-containing pair stays
+        /// fail-closed with <see cref="System.NotSupportedException"/> —
+        /// curve×curve needs arc-arc machinery — as do the constructor-based
+        /// surfaces (<see cref="NearestPoints(Geometry, Geometry)"/> and
+        /// instances).
+        /// </remarks>
         /// <param name="g0">A <c>Geometry</c>.</param>
         /// <param name="g1">Another <c>Geometry</c>.</param>
         /// <returns>The distance between the geometries.</returns>
         public static double Distance(Geometry g0, Geometry g1)
         {
+            if (Geometries.Curves.CurveDistance.TryDistance(g0, g1, out double curveDistance))
+                return curveDistance;
             var distOp = new DistanceOp(g0, g1);
             return distOp.Distance();
         }

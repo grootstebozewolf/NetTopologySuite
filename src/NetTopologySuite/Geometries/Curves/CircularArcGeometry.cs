@@ -122,6 +122,35 @@ namespace NetTopologySuite.Geometries.Curves
         }
 
         /// <summary>
+        /// The exact distance from <paramref name="point"/> to one arc
+        /// segment's locus (ISO/IEC 13249-3 §5.1.41 Desc 2a over §7.3.1
+        /// Desc 8): project the point onto the carrying circle; when the
+        /// projection's angle lies within the sweep the answer is the radial
+        /// gap |d − r| (zero on the locus, Desc 2a-iii — intersect → 0), and
+        /// otherwise the nearer endpoint. The centre itself is at distance r
+        /// from every locus point. A collinear triple measures against its
+        /// start–end chord (Desc 8b).
+        /// </summary>
+        public static double SegmentDistance(Coordinate point, Coordinate p0, Coordinate p1, Coordinate p2)
+        {
+            if (!TryCircle(p0, p1, p2, out var centre, out double radius))
+                return new LineSegment(p0, p2).Distance(point);
+            double dx = point.X - centre.X;
+            double dy = point.Y - centre.Y;
+            double d = System.Math.Sqrt(dx * dx + dy * dy);
+            if (d == 0d)
+                return radius;
+            bool ccw = OrientationIndex(p0, p1, p2) > 0d;
+            double a0 = System.Math.Atan2(p0.Y - centre.Y, p0.X - centre.X);
+            double sweep = SweepAngle(p0, p2, centre, ccw);
+            double angle = System.Math.Atan2(dy, dx);
+            double delta = AngleUtility.NormalizePositive(ccw ? angle - a0 : a0 - angle);
+            if (delta <= sweep)
+                return System.Math.Abs(d - radius);
+            return System.Math.Min(point.Distance(p0), point.Distance(p2));
+        }
+
+        /// <summary>
         /// Twice the signed area of the control triple: positive for CCW,
         /// zero exactly when collinear. Plain double arithmetic — the sign
         /// selects the traversal direction and the zero selects Desc 8b;
