@@ -36,6 +36,24 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
+        public void Length_UnitSemicircle_ClockwiseTraversal_IsPi()
+        {
+            // The #618 witness verbatim: same locus as above, opposite (CW)
+            // traversal — the sweep direction must not change the measure.
+            var arc = Cs((-1, 0), (0, 1), (1, 0));
+            Assert.That(arc.Length, Is.EqualTo(Math.PI).Within(1e-9));
+        }
+
+        [Test]
+        public void Length_MultiSegmentUnequalRadii_IsSegmentSum()
+        {
+            // Two segments with different radii: r=1 semicircle then r=2
+            // semicircle, total π + 2π.
+            var arc = Cs((0, 0), (1, 1), (2, 0), (4, 2), (6, 0));
+            Assert.That(arc.Length, Is.EqualTo(3 * Math.PI).Within(1e-9));
+        }
+
+        [Test]
         public void Length_MajorArc_IsThreeHalvesPi()
         {
             // Sweep > π: (1,0) → (0,1) → (0,-1) runs CCW through 270°, not the
