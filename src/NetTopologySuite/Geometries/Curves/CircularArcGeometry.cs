@@ -76,12 +76,9 @@ namespace NetTopologySuite.Geometries.Curves
         /// </summary>
         public static double SegmentLength(Coordinate p0, Coordinate p1, Coordinate p2)
         {
-            double orientation = OrientationIndex(p0, p1, p2);
-            if (orientation == 0d)
+            if (!TryCircle(p0, p1, p2, out var centre, out double radius))
                 return p0.Distance(p2);
-            var centre = GeomTriangle.Circumcentre(p0, p1, p2);
-            double radius = centre.Distance(p0);
-            return radius * SweepAngle(p0, p2, centre, orientation > 0d);
+            return radius * SweepAngle(p0, p2, centre, OrientationIndex(p0, p1, p2) > 0d);
         }
 
         /// <summary>
