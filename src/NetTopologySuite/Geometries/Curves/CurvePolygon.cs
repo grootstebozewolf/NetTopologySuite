@@ -12,6 +12,8 @@
 // ops (Length, Area, Envelope, IsSimple, Distance, Centroid, InteriorPoint)
 // fail closed with NotSupportedException until arc-aware implementations land
 // in a follow-up PR; Linearize() is the explicit chord escape hatch.
+// IsValid is rung-1 partial (ticket 615-g): definite-false for implemented
+// clause rules, fail-closed naming rung 2 (ticket 615-h) otherwise.
 
 using System;
 using System.Collections.Generic;
@@ -142,6 +144,15 @@ namespace NetTopologySuite.Geometries.Curves
 
         /// <inheritdoc cref="Geometry.OgcGeometryType"/>
         public override OgcGeometryType OgcGeometryType => OgcGeometryType.CurvePolygon;
+
+        /// <summary>
+        /// Arc-aware validity, rung 1 (<see cref="CurveValidity"/>; ticket
+        /// 615-g): definite <c>false</c> when an implemented ISO/IEC 13249-3
+        /// rule is violated in a ring (closure §8.2.1 Desc 2-3, or a
+        /// definite-false ring value); otherwise throws naming the missing
+        /// simplicity rung (ticket 615-h, #624). Never an unchecked <c>true</c>.
+        /// </summary>
+        public override bool IsValid => CurveValidity.IsValidRung1(this);
 
         /// <inheritdoc cref="Geometry.IsEmpty"/>
         public override bool IsEmpty => _shell.IsEmpty;

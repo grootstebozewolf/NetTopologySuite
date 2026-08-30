@@ -13,6 +13,8 @@
 // analytic ops (Area, Envelope, IsSimple, Distance, Centroid, InteriorPoint)
 // fail closed with NotSupportedException until their arc-aware
 // implementations land; Linearize() is the explicit chord escape hatch.
+// IsValid is rung-1 partial (ticket 615-g): definite-false for implemented
+// clause rules, fail-closed naming rung 2 (ticket 615-h) otherwise.
 
 using System;
 using System.Collections.Generic;
@@ -158,6 +160,15 @@ namespace NetTopologySuite.Geometries.Curves
                 return total;
             }
         }
+
+        /// <summary>
+        /// Arc-aware validity, rung 1 (<see cref="CurveValidity"/>; ticket
+        /// 615-g): definite <c>false</c> when an implemented ISO/IEC 13249-3
+        /// rule is violated (per-segment start≠end §7.3.1 Desc 6, count shape
+        /// Desc 7); otherwise throws naming the missing simplicity rung
+        /// (ticket 615-h, #624). Never an unchecked <c>true</c>.
+        /// </summary>
+        public override bool IsValid => CurveValidity.IsValidRung1(this);
 
         /// <summary>
         /// The boundary of a curve per the Mod-2 rule: empty when the curve is empty
