@@ -9,10 +9,11 @@
 //
 // Status: PRODUCTION (structure + WKT/WKB) — GEOS 3.13-class foundation.
 // Length is EXACT over the arc locus (ISO/IEC 13249-3 7.3.1 Desc 8; issue
-// NetTopologySuite.Proofs#615 ticket 615-d). The remaining metrics and
-// analytic ops (Area, Envelope, IsSimple, Distance, Centroid, InteriorPoint)
-// fail closed with NotSupportedException until their arc-aware
-// implementations land; Linearize() is the explicit chord escape hatch.
+// NetTopologySuite.Proofs#615 ticket 615-d), and Envelope is EXACT over the
+// locus (5.1.19 Desc 2b; ticket 615-e). The remaining metrics and analytic
+// ops (Area, IsSimple, Distance, Centroid, InteriorPoint) fail closed with
+// NotSupportedException until their arc-aware implementations land;
+// Linearize() is the explicit chord escape hatch.
 // IsValid is rung-1 partial (ticket 615-g): definite-false for implemented
 // clause rules, fail-closed naming rung 2 (ticket 615-h) otherwise.
 
@@ -36,10 +37,10 @@ namespace NetTopologySuite.Geometries.Curves
     /// ADR-0005 in NetTopologySuite.Proofs: conform at the boundary, normalize
     /// inside.
     /// <para/>
-    /// <see cref="Length"/> is exact over the arc locus; the remaining metrics and
-    /// analytic ops fail closed with <see cref="NotSupportedException"/> until their
-    /// arc-aware implementations land; <see cref="Linearize()"/> is the explicit
-    /// chord escape hatch.
+    /// <see cref="Length"/> and the envelope are exact over the arc locus; the
+    /// remaining metrics and analytic ops fail closed with
+    /// <see cref="NotSupportedException"/> until their arc-aware implementations
+    /// land; <see cref="Linearize()"/> is the explicit chord escape hatch.
     /// </remarks>
     [Serializable]
     public class CompoundCurve : Curve, ILinearizable<LineString>
@@ -250,11 +251,17 @@ namespace NetTopologySuite.Geometries.Curves
             }
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// The exact envelope: the union of the component envelopes, each
+        /// component computing its own exact envelope (arc components over the
+        /// arc locus, ISO/IEC 13249-3 §5.1.19 Desc 2b).
+        /// </summary>
         protected override Envelope ComputeEnvelopeInternal()
         {
-            if (IsEmpty) return new Envelope();
-            throw CurvedGeometry.NotYetSupported(this, "Envelope");
+            var env = new Envelope();
+            for (int i = 0; i < _curves.Length; i++)
+                env.ExpandToInclude(_curves[i].EnvelopeInternal);
+            return env;
         }
 
         /// <summary>

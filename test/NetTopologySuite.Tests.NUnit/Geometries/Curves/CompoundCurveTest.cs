@@ -104,13 +104,21 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void EnvelopeFailsClosedUntilArcAware()
+        public void EnvelopeIsTheComponentUnionOverTheArcLocus()
         {
+            // Flipped from EnvelopeFailsClosedUntilArcAware by ticket 615-e.
+            // The arc's circle: centre (2, 2.4), r = 2.6 — its CW major arc
+            // crosses +x, +y and -x, so the envelope bulges past both control
+            // endpoints. Value contracts live in CurveMetricsTests.
             var cc = new CompoundCurve(
                 new Curve[] { Line((0, 0), (1, 0)), Arc((1, 0), (2, 5), (3, 0)) },
                 _factory);
 
-            Assert.That(() => cc.EnvelopeInternal, Throws.TypeOf<NotSupportedException>());
+            var env = cc.EnvelopeInternal;
+            Assert.That(env.MinX, Is.EqualTo(-0.6).Within(1e-12));
+            Assert.That(env.MaxX, Is.EqualTo(4.6).Within(1e-12));
+            Assert.That(env.MinY, Is.EqualTo(0.0).Within(1e-12));
+            Assert.That(env.MaxY, Is.EqualTo(5.0).Within(1e-12));
         }
 
         [Test]
