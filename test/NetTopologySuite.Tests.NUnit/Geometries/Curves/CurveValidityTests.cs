@@ -107,6 +107,33 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
+        public void DefiniteInvalidity_ReasonNamesTheClause()
+        {
+            var arc = Cs((0, 0), (1, 1), (0, 0));
+            Assert.That(CurveValidity.TryFindDefiniteInvalidity(arc, out string reason), Is.True);
+            Assert.That(reason, Does.Contain("Desc 6"));
+
+            var dirtyRing = new CurvePolygon(arc, _factory);
+            Assert.That(CurveValidity.TryFindDefiniteInvalidity(dirtyRing, out reason), Is.True);
+            Assert.That(reason, Does.Contain("exterior ring").And.Contain("Desc 6"));
+        }
+
+        [Test]
+        public void ContiguityReassertSkipsEmptyNeighboursWithoutCrashing()
+        {
+            // Serialization-bypass shape: an empty component the constructor
+            // would have dropped. The re-assert must give a verdict, not an
+            // NRE on the empty neighbour's null endpoints.
+            var line = _factory.CreateLineString(new[]
+            {
+                new Coordinate(0, 0), new Coordinate(1, 0)
+            });
+            var arc = Cs((1, 0), (2, 1), (3, 0));
+            var cc = new CompoundCurve(new Curve[] { line, arc }, _factory);
+            Assert.That(CurveValidity.TryFindDefiniteInvalidity(cc, out _), Is.False);
+        }
+
+        [Test]
         public void IsValid_EmptyCurves_AreTrue()
         {
             // Matches IsValidOp: empty geometries are always valid.

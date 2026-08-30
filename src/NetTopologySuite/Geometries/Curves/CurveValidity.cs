@@ -9,11 +9,12 @@
 // ticket 615-g / ADR-0005). The honesty contract:
 //
 //   * DEFINITE FALSE -- a value violating an implemented clause rule returns
-//     IsValid == false. Rung 1 implements the cheap rules: per-arc-segment
-//     start != end (§7.3.1 Desc 6), the 2n+1 well-formedness count shape
-//     (§7.3.1 Desc 7), compound contiguity (§7.10.1 Desc 7), component
-//     well-formedness propagation (§7.10.1 Desc 3), and curve-polygon ring
-//     closure (§8.2.1 Desc 2-3, closed half).
+//     IsValid == false, and TryFindDefiniteInvalidity names the clause. Rung 1
+//     implements the cheap rules: per-arc-segment start != end (§7.3.1 Desc 6),
+//     the 2n+1 well-formedness count shape (§7.3.1 Desc 7), compound
+//     contiguity (§7.10.1 Desc 7), component well-formedness propagation
+//     (§7.10.1 Desc 3), and curve-polygon ring closure (§8.2.1 Desc 2-3,
+//     closed half).
 //   * FAIL CLOSED -- a value passing every implemented rule THROWS, naming the
 //     missing rung: curve simplicity (the other half of "ring", §4.2.4) needs
 //     arc-arc intersection machinery, which is rung 2 -- ticket 615-h (#624)
@@ -25,6 +26,11 @@
 // backlog). Until ST_Circle exists, write a full circle in the two-segment
 // five-point CIRCULARSTRING idiom -- it is Desc-6-clean and, like every clean
 // value, fail-closed rather than false.
+//
+// MultiCurve / MultiSurface deliberately have NO rung-1 override: their
+// members reach IsValidOp's default arm, which throws (fail-closed with a
+// bare type name). Wiring them through this rung is later 615-h-lane work;
+// no curve-containing geometry has a silent-true path either way.
 
 using System;
 
@@ -40,88 +46,128 @@ namespace NetTopologySuite.Geometries.Curves
         /// <summary>
         /// The rung-1 verdict for <paramref name="g"/>: <c>true</c> for the
         /// empty value (always valid, matching <c>IsValidOp</c>), <c>false</c>
-        /// when an implemented clause rule is provably violated, otherwise a
-        /// <see cref="NotSupportedException"/> naming the missing rung.
+        /// when an implemented clause rule is provably violated
+        /// (<see cref="TryFindDefiniteInvalidity"/> names the clause),
+        /// otherwise a <see cref="NotSupportedException"/> naming the missing
+        /// rung.
         /// </summary>
         public static bool IsValidRung1(Geometry g)
         {
             if (g.IsEmpty) return true;
-            if (HasDefiniteInvalidity(g)) return false;
+            if (TryFindDefiniteInvalidity(g, out _)) return false;
             throw Rung2Pending(g);
         }
 
         /// <summary>
-        /// True when an implemented rung-1 rule is provably violated — never a
-        /// full validity verdict, only the definite-false half of it.
+        /// True when an implemented rung-1 rule is provably violated, with
+        /// <paramref name="reason"/> naming the violated clause — never a full
+        /// validity verdict, only the definite-false half of it.
         /// </summary>
-        private static bool HasDefiniteInvalidity(Geometry g)
+        public static bool TryFindDefiniteInvalidity(Geometry g, out string reason)
         {
             switch (g)
             {
                 case CircularString cs:
-                    return HasDefiniteInvalidity(cs);
+                    return TryFindDefiniteInvalidity(cs, out reason);
                 case CompoundCurve cc:
-                    return HasDefiniteInvalidity(cc);
+                    return TryFindDefiniteInvalidity(cc, out reason);
                 case CurvePolygon cp:
-                    return HasDefiniteInvalidity(cp);
-                case LineString ls:
+                    return TryFindDefiniteInvalidity(cp, out reason);
+                case LineString ls when !ls.IsValid:
                     // Fully supported classical type: its complete validity is
                     // decidable today, so a false here is definite.
-                    return !ls.IsValid;
+                    reason = "classical LineString validity failed (IsValidOp).";
+                    return true;
                 default:
-                    // Not a rung-1 type: no implemented rule can refute it.
+                    // Not a rung-1 type (or a valid classical value): no
+                    // implemented rule can refute it.
+                    reason = null;
                     return false;
             }
         }
 
-        private static bool HasDefiniteInvalidity(CircularString cs)
+        private static bool TryFindDefiniteInvalidity(CircularString cs, out string reason)
         {
             var seq = cs.CoordinateSequence;
             int count = seq.Count;
             // §7.3.1 Desc 7 (re-asserted; intake enforces it, serialization
             // may not): 2n+1 points, n >= 1.
             if (count != 0 && (count < 3 || count % 2 == 0))
+            {
+                reason = "ISO/IEC 13249-3 §7.3.1 Desc 7: a CircularString needs " +
+                    "2n+1 control points (n >= 1); found " + count + ".";
                 return true;
+            }
             for (int i = 0; i + 2 < count; i += 2)
             {
                 // §7.3.1 Desc 6: the end point of each segment shall be
                 // distinct from its start point.
                 if (seq.GetCoordinate(i).Equals2D(seq.GetCoordinate(i + 2)))
+                {
+                    reason = "ISO/IEC 13249-3 §7.3.1 Desc 6: arc segment " + (i / 2) +
+                        " has coincident start and end points. A whole circle is " +
+                        "ST_Circle's job (§4.2.7); write it as the two-segment " +
+                        "five-point CIRCULARSTRING idiom.";
                     return true;
+                }
             }
+            reason = null;
             return false;
         }
 
-        private static bool HasDefiniteInvalidity(CompoundCurve cc)
+        private static bool TryFindDefiniteInvalidity(CompoundCurve cc, out string reason)
         {
             var curves = cc.Curves;
+            Curve previous = null;
             for (int i = 0; i < curves.Count; i++)
             {
-                // §7.10.1 Desc 3: well formed only if every component is.
+                // Empty components carry no endpoints and no rules of their
+                // own; skip them for both checks (the constructor drops them,
+                // but a deserialized value may not have gone through it).
                 if (curves[i].IsEmpty) continue;
-                if (HasDefiniteInvalidity(curves[i]))
+                // §7.10.1 Desc 3: well formed only if every component is.
+                if (TryFindDefiniteInvalidity(curves[i], out string inner))
+                {
+                    reason = "component " + i + ": " + inner;
                     return true;
-                // §7.10.1 Desc 7 contiguity (re-asserted; intake enforces it).
-                if (i > 0 && !curves[i - 1].EndPoint.Coordinate
+                }
+                // §7.10.1 Desc 7 contiguity (re-asserted; intake enforces it),
+                // between consecutive NON-empty components.
+                if (previous != null && !previous.EndPoint.Coordinate
                         .Equals2D(curves[i].StartPoint.Coordinate))
+                {
+                    reason = "ISO/IEC 13249-3 §7.10.1 Desc 7: component " + i +
+                        " does not start at its predecessor's end point.";
                     return true;
+                }
+                previous = curves[i];
             }
+            reason = null;
             return false;
         }
 
-        private static bool HasDefiniteInvalidity(CurvePolygon cp)
+        private static bool TryFindDefiniteInvalidity(CurvePolygon cp, out string reason)
         {
             for (int i = -1; i < cp.NumInteriorRings; i++)
             {
                 var ring = i < 0 ? cp.ExteriorRing : cp.GetInteriorRingN(i);
+                string label = i < 0 ? "exterior ring" : "interior ring " + i;
                 if (ring == null || ring.IsEmpty) continue;
                 // §8.2.1 Desc 2-3, closed half (re-asserted; intake enforces
                 // it): rings are closed curves.
                 if (ring is Curve c && !c.IsClosed)
+                {
+                    reason = "ISO/IEC 13249-3 §8.2.1 Desc 2-3: the " + label +
+                        " is not closed.";
                     return true;
-                if (HasDefiniteInvalidity(ring))
+                }
+                if (TryFindDefiniteInvalidity(ring, out string inner))
+                {
+                    reason = label + ": " + inner;
                     return true;
+                }
             }
+            reason = null;
             return false;
         }
 
@@ -137,7 +183,7 @@ namespace NetTopologySuite.Geometries.Curves
             return new NotSupportedException(
                 $"Arc-aware IsValid for {g.GeometryType} is partial (rung 1): this value passes the " +
                 "implemented ISO/IEC 13249-3 clause checks, but curve simplicity needs arc-arc " +
-                "intersection (rung 2, NetTopologySuite.Proofs ticket 615-h). " +
+                "intersection (rung 2, NetTopologySuite.Proofs ticket 615-h, issue #624 there). " +
                 "A checked 'true' is not possible yet; an unchecked 'true' is never returned.");
         }
     }
