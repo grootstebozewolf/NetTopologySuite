@@ -1066,30 +1066,114 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
 
             if (current.Equals(WKTConstants.EMPTY) || current.Equals("("))
             {
-                var sequence = GetCoordinateSequence(factory, tokens, ordinateFlags, 0, false);
+                var sequence = GetCurveComponentSequence(factory, tokens, ordinateFlags, 0);
                 return factory.CreateLineString(sequence);
             }
 
-            // GEOS / PostGIS accept tagged LINESTRING inside COMPOUNDCURVE / CURVEPOLYGON
+            // DEVIATION from the ISO/IEC 13249-3 5.1.67 grammar, kept
+            // deliberately (NetTopologySuite.Proofs #615, ticket 615-i):
+            // <curve text> admits only a bare coordinate body, CIRCULARSTRING
+            // or COMPOUNDCURVE as components, but GEOS and PostGIS accept
+            // tagged LINESTRING components inside COMPOUNDCURVE /
+            // CURVEPOLYGON. Accepted on input for interop; the writer emits
+            // the conformant bare-body form.
             if (current.StartsWith(WKTConstants.LINESTRING, StringComparison.OrdinalIgnoreCase))
             {
                 GetNextWord(tokens);
-                return ReadLineStringText(tokens, factory, ordinateFlags);
+                CheckCurveComponentZm(GetComponentOrdinateFlags(tokens, current, WKTConstants.LINESTRING), ordinateFlags, WKTConstants.LINESTRING);
+                var sequence = GetCurveComponentSequence(factory, tokens, ordinateFlags, LineString.MinimumValidSize);
+                return factory.CreateLineString(sequence);
             }
 
             if (current.StartsWith(WKTConstants.CIRCULARSTRING, StringComparison.OrdinalIgnoreCase))
             {
                 GetNextWord(tokens);
-                return ReadCircularStringText(tokens, factory, ordinateFlags);
+                CheckCurveComponentZm(GetComponentOrdinateFlags(tokens, current, WKTConstants.CIRCULARSTRING), ordinateFlags, WKTConstants.CIRCULARSTRING);
+                var sequence = GetCurveComponentSequence(factory, tokens, ordinateFlags, 0);
+                return new Geometries.Curves.CircularString(sequence, factory);
             }
 
             if (current.StartsWith(WKTConstants.COMPOUNDCURVE, StringComparison.OrdinalIgnoreCase))
             {
                 GetNextWord(tokens);
+                CheckCurveComponentZm(GetComponentOrdinateFlags(tokens, current, WKTConstants.COMPOUNDCURVE), ordinateFlags, WKTConstants.COMPOUNDCURVE);
                 return ReadCompoundCurveText(tokens, factory, ordinateFlags);
             }
 
             throw new ParseException("Unexpected token: " + current);
+        }
+
+        /// <summary>
+        /// The <c>&lt;z m&gt;</c> tag a curve component carries of its own:
+        /// either joined to the type word (<c>CIRCULARSTRINGZ</c>) or as the
+        /// following token (<c>CIRCULARSTRING Z</c>); <see cref="Ordinates.XY"/>
+        /// when untagged (the tag token, if any, is consumed).
+        /// </summary>
+        private static Ordinates GetComponentOrdinateFlags(TokenStream tokens, string word, string typeName)
+        {
+            string suffix = word.Substring(typeName.Length);
+            if (suffix.Length == 0)
+                return GetNextOrdinateFlags(tokens);
+            if (suffix.Equals(WKTConstants.ZM, StringComparison.OrdinalIgnoreCase))
+                return Ordinates.XYZM;
+            if (suffix.Equals(WKTConstants.Z, StringComparison.OrdinalIgnoreCase))
+                return Ordinates.XYZ;
+            if (suffix.Equals(WKTConstants.M, StringComparison.OrdinalIgnoreCase))
+                return Ordinates.XYM;
+            return Ordinates.XY;
+        }
+
+        /// <summary>
+        /// Enforces the ISO/IEC 13249-3 5.1.67 dimension-consistency rule on a
+        /// curve component's own <c>&lt;z m&gt;</c> tag: every WKT nested
+        /// inside a WKT that carries a <c>&lt;z m&gt;</c> tag shall carry the
+        /// same one. An untagged component inherits the outer dimension; a
+        /// conflicting tag is rejected, never silently coerced
+        /// (NetTopologySuite.Proofs #615, ticket 615-i).
+        /// </summary>
+        private static void CheckCurveComponentZm(Ordinates component, Ordinates outer, string typeName)
+        {
+            if (component == Ordinates.XY || component == outer)
+                return;
+            throw new ParseException(
+                $"{typeName} component tag '{OrdinateTag(component)}' conflicts with the outer dimension " +
+                $"'{(outer == Ordinates.XY ? "(none)" : OrdinateTag(outer))}': ISO/IEC 13249-3 5.1.67 requires " +
+                "nested <z m> tags to match the outer tag; mixed-dimension curve WKT is rejected, not coerced");
+        }
+
+        private static string OrdinateTag(Ordinates ordinateFlags)
+        {
+            switch (ordinateFlags)
+            {
+                case Ordinates.XYZM: return WKTConstants.ZM;
+                case Ordinates.XYZ: return WKTConstants.Z;
+                case Ordinates.XYM: return WKTConstants.M;
+                default: return string.Empty;
+            }
+        }
+
+        /// <summary>
+        /// Reads a curve component's coordinate body, translating a parse
+        /// failure under a non-XY outer <c>&lt;z m&gt;</c> tag into a message
+        /// that cites the ISO/IEC 13249-3 5.1.67 dimension-consistency rule —
+        /// the common cause is a component whose coordinate arity does not
+        /// match the outer tag (e.g. a plain 2D body inside a
+        /// <c>COMPOUNDCURVE Z</c>). The original message is preserved for the
+        /// cases that are plain syntax errors.
+        /// </summary>
+        private CoordinateSequence GetCurveComponentSequence(GeometryFactory factory, TokenStream tokens, Ordinates ordinateFlags, int minSize)
+        {
+            try
+            {
+                return GetCoordinateSequence(factory, tokens, ordinateFlags, minSize, false);
+            }
+            catch (ParseException e) when (ordinateFlags != Ordinates.XY)
+            {
+                throw new ParseException(
+                    $"Curve component does not parse under the outer '{OrdinateTag(ordinateFlags)}' dimension tag: " +
+                    "ISO/IEC 13249-3 5.1.67 requires every WKT nested inside a WKT that carries a <z m> tag to " +
+                    $"carry the same coordinate dimension ({e.Message})");
+            }
         }
 
         /// <summary>
@@ -1128,13 +1212,17 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
                 if (current.StartsWith(WKTConstants.CURVEPOLYGON, StringComparison.OrdinalIgnoreCase))
                 {
                     GetNextWord(tokens);
+                    CheckCurveComponentZm(GetComponentOrdinateFlags(tokens, current, WKTConstants.CURVEPOLYGON), ordinateFlags, WKTConstants.CURVEPOLYGON);
                     surfaces.Add(ReadCurvePolygonText(tokens, factory, ordinateFlags));
                 }
                 else if (current.StartsWith(WKTConstants.POLYGON, StringComparison.OrdinalIgnoreCase)
                          || current.Equals(WKTConstants.EMPTY) || current.Equals("("))
                 {
                     if (current.StartsWith(WKTConstants.POLYGON, StringComparison.OrdinalIgnoreCase))
+                    {
                         GetNextWord(tokens);
+                        CheckCurveComponentZm(GetComponentOrdinateFlags(tokens, current, WKTConstants.POLYGON), ordinateFlags, WKTConstants.POLYGON);
+                    }
                     surfaces.Add(ReadPolygonText(tokens, factory, ordinateFlags));
                 }
                 else

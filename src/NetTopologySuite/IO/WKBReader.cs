@@ -279,6 +279,16 @@ namespace NetTopologySuite.IO
             int newSrid = (type & 0x20000000) != 0 ? reader.ReadInt32() : -1;
             if (HandleSRID && newSrid >= 0) srid = newSrid;
 
+            // ISO/IEC 13249-3 5.1.68 Table 15 lists an alternate code series
+            // for the curved types (1000001-1000005 = CircularString ..
+            // MultiSurface) alongside the base codes 8-12; accepted on read
+            // since the masked "% 1000" scheme below cannot recover them
+            // (1000001 & 0xffff == 16961). The writer emits base codes only
+            // (NetTopologySuite.Proofs #615, ticket 615-i).
+            uint plainType = type & 0x1FFFFFFF;
+            if (plainType >= 1000001 && plainType <= 1000005)
+                return (WKBGeometryTypes)(plainType - 1000001 + (uint)WKBGeometryTypes.WKBCircularString);
+
             //Get cs from prefix
             uint ordinate = (type & 0xffff) / 1000;
             switch (ordinate)

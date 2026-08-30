@@ -71,6 +71,42 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That((int)WKBGeometryTypes.WKBMultiSurface, Is.EqualTo(12));
         }
 
+        // ISO/IEC 13249-3 §5.1.68 Table 15 lists an alternate WKB code series
+        // for the curved types (1000001–1000005) alongside the base codes
+        // 8–12 (ticket 615-i): accepted on read; the writer emits base codes
+        // only (also pinned here).
+        [TestCase("CIRCULARSTRING (0 0, 1 1, 2 0)", 8u, 1000001u, typeof(CircularString))]
+        [TestCase("COMPOUNDCURVE ((0 0, 1 0), CIRCULARSTRING (1 0, 2 1, 3 0))", 9u, 1000002u, typeof(CompoundCurve))]
+        [TestCase("CURVEPOLYGON (CIRCULARSTRING (0 0, 2 2, 4 0, 2 -2, 0 0))", 10u, 1000003u, typeof(CurvePolygon))]
+        [TestCase("MULTICURVE (CIRCULARSTRING (0 0, 1 1, 2 0), (3 0, 4 0))", 11u, 1000004u, typeof(MultiCurve))]
+        [TestCase("MULTISURFACE (CURVEPOLYGON (CIRCULARSTRING (0 0, 2 2, 4 0, 2 -2, 0 0)))", 12u, 1000005u, typeof(MultiSurface))]
+        public void WkbAlternateTable15CodesReadAsBaseTypes(string wkt, uint baseCode, uint altCode, Type expectedType)
+        {
+            var g = new WKTReader().Read(wkt);
+            byte[] bytes = new WKBWriter().Write(g);
+
+            // Byte 0 is the little-endian marker; bytes 1–4 are the type code.
+            Assert.That(bytes[0], Is.EqualTo(1), "expected little-endian WKB");
+            Assert.That(ReadTypeLe(bytes), Is.EqualTo(baseCode),
+                "the writer must emit the base code, never the alternate");
+
+            WriteTypeLe(bytes, altCode);
+            var again = new WKBReader().Read(bytes);
+            Assert.That(again, Is.InstanceOf(expectedType));
+            Assert.That(again.EqualsExact(g), Is.True, WKBWriter.ToHex(bytes));
+        }
+
+        private static uint ReadTypeLe(byte[] wkb) =>
+            (uint)(wkb[1] | wkb[2] << 8 | wkb[3] << 16 | wkb[4] << 24);
+
+        private static void WriteTypeLe(byte[] wkb, uint type)
+        {
+            wkb[1] = (byte)type;
+            wkb[2] = (byte)(type >> 8);
+            wkb[3] = (byte)(type >> 16);
+            wkb[4] = (byte)(type >> 24);
+        }
+
         [Test]
         public void MultiSurfacePreservesMemberSubtypes()
         {
