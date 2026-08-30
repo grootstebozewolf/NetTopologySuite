@@ -215,6 +215,20 @@ namespace NetTopologySuite.Geometries.Curves
             /// oracle's path) is the way to widen this.
             /// </summary>
             IllConditioned,
+
+            /// <summary>
+            /// The pair is too close to tangency (circle–circle, or
+            /// circle–chord) for a double-precision contact decision: the
+            /// intersection discriminant's float error spans both signs
+            /// there, so the kernel cannot tell one touch point from a pair
+            /// of crossings ~sqrt(eps)·scale apart or from a near-miss — the
+            /// rung-4 review demonstrated wrong CHECKED verdicts in both
+            /// directions (a missed contact turned a non-simple MultiCurve
+            /// silently simple; a phantom split pair turned a Desc-11-clean
+            /// CurvePolygon definite-false). Refusing beats guessing; exact
+            /// arithmetic (the oracle's path) is the way to widen this.
+            /// </summary>
+            AmbiguousTangency,
         }
 
         /// <summary>
@@ -223,6 +237,16 @@ namespace NetTopologySuite.Geometries.Curves
         /// oracle's RING_SIMPLE lane uses for its permitted-vertex filter.
         /// </summary>
         public const double RelativeTolerance = 1e-9;
+
+        private const double MachineEpsilon = 2.220446049250313e-16;
+
+        /// <summary>
+        /// Safety factor on the tangency refusal band: the discriminant is
+        /// refused when its magnitude is within this multiple of its own
+        /// worst-case rounding error (a first-order term count, not a tight
+        /// bound — the factor buys the slack).
+        /// </summary>
+        private const double TangencyGuardFactor = 64;
 
         /// <summary>
         /// Computes the contact points of two segment loci (each segment an
@@ -254,20 +278,13 @@ namespace NetTopologySuite.Geometries.Curves
             // whenever that error could exceed the match tolerance.
             double scale = 1 + MaxAbs(p0, p1, p2, q0, q1, q2);
             double rMax = System.Math.Max(aIsArc ? ra : 0, bIsArc ? rb : 0);
-            const double machineEpsilon = 2.220446049250313e-16;
-            if (machineEpsilon * rMax * rMax > RelativeTolerance * scale * scale)
+            if (MachineEpsilon * rMax * rMax > RelativeTolerance * scale * scale)
                 return SegmentPairResult.IllConditioned;
 
             if (aIsArc && !bIsArc)
-            {
-                ArcChordContacts(ca, ra, ArcOf(p0, p1, p2, ca), q0, q2, contacts);
-                return SegmentPairResult.Decided;
-            }
+                return ArcChordContacts(ca, ra, ArcOf(p0, p1, p2, ca), q0, q2, contacts);
             if (!aIsArc)
-            {
-                ArcChordContacts(cb, rb, ArcOf(q0, q1, q2, cb), p0, p2, contacts);
-                return SegmentPairResult.Decided;
-            }
+                return ArcChordContacts(cb, rb, ArcOf(q0, q1, q2, cb), p0, p2, contacts);
 
             var arcA = ArcOf(p0, p1, p2, ca);
             var arcB = ArcOf(q0, q1, q2, cb);
@@ -279,10 +296,11 @@ namespace NetTopologySuite.Geometries.Curves
                     return SegmentPairResult.AmbiguousCocircular;
             }
             if (exactlyCocircular)
+            {
                 CocircularContacts(ca, arcA, p0, p2, arcB, q0, q2, contacts, ref overlap);
-            else
-                TwoCircleContacts(ca, ra, arcA, cb, rb, arcB, contacts);
-            return SegmentPairResult.Decided;
+                return SegmentPairResult.Decided;
+            }
+            return TwoCircleContacts(ca, ra, arcA, cb, rb, arcB, contacts);
         }
 
         /// <summary>Sweep frame of one arc: start angle, width, direction.</summary>
@@ -340,7 +358,7 @@ namespace NetTopologySuite.Geometries.Curves
             }
         }
 
-        private static void ArcChordContacts(
+        private static SegmentPairResult ArcChordContacts(
             Coordinate centre, double radius, ArcFrame arc,
             Coordinate q0, Coordinate q2,
             System.Collections.Generic.List<Coordinate> contacts)
@@ -351,10 +369,21 @@ namespace NetTopologySuite.Geometries.Curves
             double b = 2 * (fx * dx + fy * dy);
             double c = fx * fx + fy * fy - radius * radius;
             double disc = b * b - 4 * a * c;
+            // Tangency refusal band (rung-4 review): near disc == 0 the
+            // float error of disc — of order eps·(sum of its length⁴
+            // terms) — spans both signs, so tangency, a crossing pair
+            // ~sqrt(eps)·scale apart, and a near-miss are indistinguishable
+            // (a chord tangency computed to EXACT zeros is no safer: b and c
+            // carry the float circumradius). A wrong pick is an unchecked
+            // verdict; refuse the band.
+            double discMagnitude = a + fx * fx + fy * fy + radius * radius;
+            if (System.Math.Abs(disc) <=
+                TangencyGuardFactor * MachineEpsilon * discMagnitude * discMagnitude)
+                return SegmentPairResult.AmbiguousTangency;
             if (disc < 0)
-                return;
+                return SegmentPairResult.Decided;
             double sq = System.Math.Sqrt(disc);
-            for (int k = 0; k < (sq == 0d ? 1 : 2); k++)
+            for (int k = 0; k < 2; k++)
             {
                 double t = (-b + (k == 0 ? -sq : sq)) / (2 * a);
                 if (t < 0 || t > 1)
@@ -363,6 +392,7 @@ namespace NetTopologySuite.Geometries.Curves
                 if (OnArc(centre, arc, x, y))
                     contacts.Add(new Coordinate(x, y));
             }
+            return SegmentPairResult.Decided;
         }
 
         private static double MaxAbs(params Coordinate[] coords)
@@ -376,7 +406,7 @@ namespace NetTopologySuite.Geometries.Curves
             return max;
         }
 
-        private static void TwoCircleContacts(
+        private static SegmentPairResult TwoCircleContacts(
             Coordinate ca, double ra, ArcFrame arcA,
             Coordinate cb, double rb, ArcFrame arcB,
             System.Collections.Generic.List<Coordinate> contacts)
@@ -387,12 +417,27 @@ namespace NetTopologySuite.Geometries.Curves
             // error the remaining r-terms can carry.
             double a = (d * d + (ra - rb) * (ra + rb)) / (2 * d);
             double h2 = (ra - a) * (ra + a);
+            // Tangency refusal band (rung-4 review-demonstrated): near
+            // h2 == 0 the accumulated float error — first-order,
+            // eps·(ra² + a² + |a|·(d²+ra²+rb²)/d) — spans both signs, so a
+            // touch, a crossing pair ~sqrt(eps)·scale apart, and a near-miss
+            // are indistinguishable; the demonstrated failures were a missed
+            // tangency contact (h2 rounding negative) and a phantom split
+            // pair 20× the dedup tolerance apart. An EXACT h2 == 0 is no
+            // safer: the centres and radii it is built from carry float
+            // error themselves. Non-finite h2 (near-concentric d → 0) skips
+            // the band: |h2| is then huge, a definite no-contact.
+            double h2Magnitude = ra * ra + a * a
+                + System.Math.Abs(a) * (d * d + ra * ra + rb * rb) / d;
+            if (!double.IsNaN(h2) && !double.IsInfinity(h2)
+                && System.Math.Abs(h2) <= TangencyGuardFactor * MachineEpsilon * h2Magnitude)
+                return SegmentPairResult.AmbiguousTangency;
             if (h2 < 0)
-                return;
+                return SegmentPairResult.Decided;
             double ux = (cb.X - ca.X) / d, uy = (cb.Y - ca.Y) / d;
             double bx = ca.X + a * ux, by = ca.Y + a * uy;
             double h = System.Math.Sqrt(h2);
-            for (int k = 0; k < (h == 0d ? 1 : 2); k++)
+            for (int k = 0; k < 2; k++)
             {
                 double sign = k == 0 ? 1 : -1;
                 double x = bx + sign * h * -uy;
@@ -400,6 +445,7 @@ namespace NetTopologySuite.Geometries.Curves
                 if (OnArc(ca, arcA, x, y) && OnArc(cb, arcB, x, y))
                     contacts.Add(new Coordinate(x, y));
             }
+            return SegmentPairResult.Decided;
         }
 
         private static void CocircularContacts(

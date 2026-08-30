@@ -152,22 +152,33 @@ namespace NetTopologySuite.Geometries.Curves
         /// §8.2.1 Desc 11 (615-h rung 4, #639): <c>true</c> when some pair of
         /// this CurvePolygon's rings provably intersects in more than one
         /// point — a shared 1-D piece, or two or more distinct
-        /// (tolerance-deduplicated) contact points. Kernel residues throw.
+        /// (tolerance-deduplicated) contact points. Kernel residues are
+        /// deferred: a definite refutation from any pair is sound regardless
+        /// (an ambiguous pair can only ADD contacts), but with a residue and
+        /// no refutation the contact count is uncertain, so this throws
+        /// rather than letting the caller's pending message claim Desc 11
+        /// passed.
         /// </summary>
         private static bool RingPairCountRefutes(CurvePolygon cp)
         {
             var rings = CollectRings(cp);
             var contacts = new System.Collections.Generic.List<Coordinate>();
+            NotSupportedException deferred = null;
             for (int i = 0; i < rings.Count; i++)
             {
                 for (int j = i + 1; j < rings.Count; j++)
                 {
                     contacts.Clear();
-                    CurveSimplicity.RingPairContacts(cp, rings[i], rings[j], contacts, out bool overlap);
+                    var residue = CurveSimplicity.RingPairContacts(
+                        cp, rings[i], rings[j], contacts, out bool overlap);
                     if (overlap || contacts.Count >= 2)
                         return true;
+                    if (residue != null)
+                        deferred = deferred ?? residue;
                 }
             }
+            if (deferred != null)
+                throw deferred;
             return false;
         }
 
@@ -218,6 +229,7 @@ namespace NetTopologySuite.Geometries.Curves
                 elementRings.Add(CollectRings(element));
             }
             var contacts = new System.Collections.Generic.List<Coordinate>();
+            NotSupportedException deferred = null;
             for (int a = 0; a < elementRings.Count; a++)
             {
                 for (int b = a + 1; b < elementRings.Count; b++)
@@ -227,13 +239,22 @@ namespace NetTopologySuite.Geometries.Curves
                         foreach (var ringB in elementRings[b])
                         {
                             contacts.Clear();
-                            CurveSimplicity.RingPairContacts(ms, ringA, ringB, contacts, out bool overlap);
+                            var residue = CurveSimplicity.RingPairContacts(
+                                ms, ringA, ringB, contacts, out bool overlap);
                             if (overlap)
                                 return true;
+                            if (residue != null)
+                                deferred = deferred ?? residue;
                         }
                     }
                 }
             }
+            // With a residue and no overlap found, "no element-boundary pair
+            // shares a 1-D piece" cannot be certified (a near-cocircular pair
+            // could hide exactly that) — throw the residue instead of letting
+            // the pending message overclaim.
+            if (deferred != null)
+                throw deferred;
             return false;
         }
 

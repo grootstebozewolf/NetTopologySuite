@@ -50,6 +50,21 @@ namespace NetTopologySuite.Geometries.Curves
                 $"Arc-aware {operation} is not implemented for {g.GeometryType} yet (planned follow-up PR). Call Linearize() to opt in to an explicit chord approximation.");
         }
 
+        /// <summary>
+        /// A permanent honesty refusal (a fail-closed residue of the 615-h
+        /// verdict lane): unlike <see cref="NotYetSupported"/> this is not a
+        /// planned-implementation gap, and Linearize() is no way out — a
+        /// verdict over a chord approximation would be exactly the unchecked
+        /// claim the refusal exists to prevent. The message names the
+        /// residue and where the lane continues.
+        /// </summary>
+        public static NotSupportedException Refused(Geometry g, string what)
+        {
+            return new NotSupportedException(
+                $"Arc-aware verdict refused for {g.GeometryType}: {what}. " +
+                "An unchecked verdict is never returned.");
+        }
+
         public static void CheckNotCurved(Geometry g, string operation)
         {
             if (ContainsCurvedType(g))

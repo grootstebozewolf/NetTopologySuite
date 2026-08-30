@@ -32,14 +32,21 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void TwoArcsTangentAtSharedVertex_IsSimple()
+        public void TwoArcsTangentAtSharedVertex_StaysFailClosed()
         {
-            // The circles (centre (1,0), r=1) and (centre (3,0), r=1) are
-            // externally tangent exactly at the connecting vertex (2,0):
-            // the only locus contact is the permitted one.
+            // FLIPPED by the rung-4 review: this used to be checked-true
+            // ("the only locus contact is the permitted vertex (2,0)"), but
+            // that verdict rested on the tangency discriminant computing an
+            // EXACT zero — dyadic luck. A 1-ulp perturbation of either
+            // circle turns the touch into a crossing pair ~sqrt(eps) apart,
+            // indistinguishable at double precision, and the review
+            // demonstrated wrong checked verdicts in both directions inside
+            // that band. The kernel now refuses it (AmbiguousTangency,
+            // continued at issue #641).
             var cs = Cs((0, 0), (1, 1), (2, 0), (3, -1), (4, 0));
-            Assert.That(cs.IsSimple, Is.True);
-            Assert.That(cs.IsRing, Is.False, "open chain");
+            Assert.That(() => cs.IsSimple,
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("tangent"));
+            Assert.That(() => cs.IsRing, Throws.TypeOf<NotSupportedException>());
         }
 
         [Test]
@@ -86,7 +93,17 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         [Test]
         public void ThreeCleanArcs_IsSimple()
         {
-            var cs = Cs((0, 0), (1, 1), (2, 0), (3, -1), (4, 0), (5, 1), (6, 0));
+            // "Clean" = TRANSVERSAL at both connecting vertices (the second
+            // circle-pair intersection is off at least one arc's sweep, and
+            // the discriminants sit far above the tangency band): the chain
+            // stays checked-true after the rung-4 tangency refusal. The old
+            // coordinates of this test formed a smoothly TANGENT chain —
+            // that shape is now fail-closed, see
+            // TwoArcsTangentAtSharedVertex_StaysFailClosed.
+            var cs = Cs(
+                (0, 0), (1, 1), (2, 0),
+                (2.7071067811865475, -0.2928932188134525), (3, -1),
+                (4, -0.3819660112501051), (5, -1));
             Assert.That(cs.IsSimple, Is.True);
         }
 
@@ -137,16 +154,21 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void NonAdjacentTangentTouch_IsNotSimple()
+        public void NonAdjacentTangentTouch_StaysFailClosed()
         {
-            // Touch-only variant (review-added): the last chord runs along
-            // y = 1, exactly tangent to the first arc's circle at (1,1) —
-            // the circle-line quadratic has discriminant 0, a single root.
-            // Unlike NonAdjacentTouch_IsNotSimple (whose chord ALSO crosses
-            // the arc transversally at (1.6, 0.8)), this pins the
-            // endpoint/tangent contact path alone.
+            // FLIPPED by the rung-4 review: the last chord runs along y = 1,
+            // exactly tangent to the first arc's circle at (1,1). The old
+            // definite-false rested on the circle-line discriminant being an
+            // EXACT zero — inside the band where a touch, a close crossing
+            // pair, and a near-miss are indistinguishable at double
+            // precision (the b and c terms carry the float circumradius), so
+            // the kernel now refuses (AmbiguousTangency, issue #641). The
+            // deferral rule keeps NonAdjacentTouch_IsNotSimple decided: its
+            // refutation comes from a transversal crossing, which is sound
+            // regardless of any banded pair elsewhere in the scan.
             var cs = Cs((0, 0), (1, 1), (2, 0), (3, 0.5), (4, 1), (2.5, 1), (1, 1));
-            Assert.That(cs.IsSimple, Is.False);
+            Assert.That(() => cs.IsSimple,
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("tangent"));
         }
 
         [Test]
@@ -181,16 +203,21 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         // consecutive coordinate pair. ---------------------------------------
 
         [Test]
-        public void CompoundLineTangentThroughArc_IsNotSimple()
+        public void CompoundLineTangentThroughArc_StaysFailClosed()
         {
-            // The LineString's SECOND sub-segment runs along y = 1, tangent
-            // to the arc's circle at (1,1) — a non-adjacent chain contact.
+            // FLIPPED by the rung-4 review: BOTH of this compound's
+            // non-trivial contacts are exact line tangencies (x = 2 at
+            // (2,0); y = 1 at (1,1)) — every refuting pair sits in the
+            // tangency band, so with no transversal witness left the value
+            // fail-closes (AmbiguousTangency, issue #641) instead of
+            // resting a definite false on exact-zero discriminants.
             var cc = new CompoundCurve(new Curve[]
             {
                 Cs((0, 0), (1, 1), (2, 0)),
                 Line((2, 0), (2, 1), (0, 1)),
             }, _factory);
-            Assert.That(cc.IsSimple, Is.False);
+            Assert.That(() => cc.IsSimple,
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("tangent"));
         }
 
         [Test]
@@ -334,6 +361,27 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
                 Line((1, 0), (3, 0)),
             }, _factory);
             Assert.That(mc.IsSimple, Is.False);
+        }
+
+        [Test]
+        public void MultiCurve_NearTangentMembers_StayFailClosed()
+        {
+            // Rung-4 review witness W1, pinned: both members pass through
+            // the shared control point (2,0) — it is the mid control of
+            // both arcs, so it is on both loci, interior to both open
+            // members — and the circumcircles are exactly internally
+            // tangent there. Before the tangency band this answered a
+            // SILENT WRONG TRUE (the kernel's h2 rounded negative and the
+            // contact vanished); §10.3.1 Desc 4 refutes it. The honest
+            // double-precision answer is the fail-closed refusal.
+            var mc = new MultiCurve(new Curve[]
+            {
+                Cs((0, 2), (2, 0), (0, -2)),
+                Cs((0.8466466098542542, 1.1533533901457458), (2, 0),
+                   (0.8466466098542542, -1.1533533901457458)),
+            }, _factory);
+            Assert.That(() => mc.IsSimple,
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("tangent"));
         }
 
         [Test]
