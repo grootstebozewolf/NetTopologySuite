@@ -12,8 +12,11 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
     /// Green contract tests for arc-aware curve metrics as they land
     /// (ISO/IEC 13249-3; NetTopologySuite.Proofs issue #615). Length computes
     /// over the arc locus of §7.3.1 Desc 8: r·θ per segment, with a collinear
-    /// triple degenerating to its start–end chord (Desc 8b). Contracts still
-    /// red (Distance, Envelope) live in <see cref="CurveMetricsContractTests"/>.
+    /// triple degenerating to its start–end chord (Desc 8b). All four original
+    /// Red contracts (Length, Envelope, Distance ×2) are flipped green here;
+    /// the emptied Red fixture is deleted. The fail-closed frontier that
+    /// remains (curve×curve distance and friends, the 615-h lane) is pinned
+    /// in <see cref="CurveFailClosedTest"/>.
     /// </summary>
     public class CurveMetricsTests
     {
@@ -263,6 +266,19 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             // is (1,1), at distance √2.
             var arc = Cs((0, 0), (1, 1), (2, 2));
             var pt = _factory.CreatePoint(new Coordinate(2, 0));
+            Assert.That(NetTopologySuite.Operation.Distance.DistanceOp.Distance(pt, arc),
+                Is.EqualTo(Math.Sqrt(2)).Within(1e-12));
+        }
+
+        [Test]
+        public void Distance_CollinearOvershoot_MeasuresTheChordNotTheIntermediate()
+        {
+            // Desc 8b: a collinear triple's locus is the start–end chord only.
+            // Here the intermediate (2,2) overshoots the end (1,1); a locus
+            // that wrongly included it would answer 0 for a point at the
+            // intermediate — the chord (0,0)–(1,1) answers √2.
+            var arc = Cs((0, 0), (2, 2), (1, 1));
+            var pt = _factory.CreatePoint(new Coordinate(2, 2));
             Assert.That(NetTopologySuite.Operation.Distance.DistanceOp.Distance(pt, arc),
                 Is.EqualTo(Math.Sqrt(2)).Within(1e-12));
         }
