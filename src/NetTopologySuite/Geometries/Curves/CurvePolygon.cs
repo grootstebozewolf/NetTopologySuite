@@ -8,12 +8,15 @@
 //   Assisted-by: Claude (Fable 5)
 //
 // Status: PRODUCTION (structure + WKT/WKB) — GEOS 3.13-class foundation.
-// Rings are Curve, never collapsed to LinearRing (F-CP). Metrics and analytic
-// ops (Length, Area, Envelope, IsSimple, Distance, Centroid, InteriorPoint)
-// fail closed with NotSupportedException until arc-aware implementations land
-// in a follow-up PR; Linearize() is the explicit chord escape hatch.
-// IsValid is rung-1 partial (ticket 615-g): definite-false for implemented
-// clause rules, fail-closed naming rung 2 (ticket 615-h) otherwise.
+// Rings are Curve, never collapsed to LinearRing (F-CP). Area and Length
+// (perimeter) are closed-form over the structural rings (JTS 9808dfa1 port);
+// Linearize(tolerance) densifies by sagitta, keeping every control as an
+// exact vertex (JTS f6347444 port). The remaining analytic ops (Envelope,
+// Distance, Centroid, InteriorPoint) fail closed with NotSupportedException
+// until arc-aware implementations land. IsSimple evaluates ring simplicity
+// over the arc loci (615-h rung 3); IsValid is arc-aware partial: definite
+// verdicts for the implemented ISO/IEC 13249-3 clause rules, fail-closed
+// naming the pending ring-pair conditions otherwise.
 
 using System;
 using System.Collections.Generic;
@@ -33,9 +36,10 @@ namespace NetTopologySuite.Geometries.Curves
     /// collapse a curved ring to a flat <see cref="LinearRing"/> (the F-CP
     /// structural contract).
     /// <para/>
-    /// Metrics and analytic ops fail closed with <see cref="NotSupportedException"/>
-    /// until arc-aware implementations land; <see cref="Linearize()"/> is the explicit
-    /// chord escape hatch.
+    /// <see cref="Area"/> and <see cref="Length"/> (perimeter) are closed-form over
+    /// the structural rings, and <see cref="Linearize(double)"/> densifies by
+    /// sagitta; the remaining analytic ops fail closed with
+    /// <see cref="NotSupportedException"/> until arc-aware implementations land.
     /// </remarks>
     [Serializable]
     public class CurvePolygon : Surface<Curve>, ILinearizable<Polygon>
@@ -287,12 +291,19 @@ namespace NetTopologySuite.Geometries.Curves
         /// Perimeter: sum of structural ring lengths. Circular rings use the
         /// closed-form <see cref="CircularString.Length"/>.
         /// </summary>
-        /// <exception cref="NotSupportedException">
-        /// When this geometry is not empty. Call <see cref="Linearize()"/> to opt in
-        /// to an explicit chord approximation.
-        /// </exception>
-        public override double Length =>
-            IsEmpty ? 0d : throw CurvedGeometry.NotYetSupported(this, "Length");
+        public override double Length
+        {
+            get
+            {
+                if (IsEmpty) return 0d;
+                double length = _shell.Length;
+                foreach (var hole in _holes)
+                {
+                    length += hole.Length;
+                }
+                return length;
+            }
+        }
 
         /// <summary>
         /// The rings of this surface, returned as a <see cref="GeometryCollection"/>
@@ -481,51 +492,47 @@ namespace NetTopologySuite.Geometries.Curves
         /// Returns a chord approximation of this curve polygon as a linear
         /// <see cref="Polygon"/> whose rings are linearized control polylines.
         /// </summary>
-        public Polygon Linearize()
+        public Polygon Linearize() => Linearize(double.NaN);
+
+        /// <summary>
+        /// Returns a chord approximation of this curve polygon as a linear
+        /// <see cref="Polygon"/>.
+        /// </summary>
+        /// <param name="arcSegmentLength">
+        /// Passed through to curved rings, which densify by sagitta for a
+        /// finite value (keeping every supplied control as an exact vertex);
+        /// a non-finite value yields the control polylines.
+        /// </param>
+        public Polygon Linearize(double arcSegmentLength)
         {
             if (IsEmpty)
             {
                 return Factory.CreatePolygon();
             }
 
-            var shell = LinearizeRing(_shell);
+            var shell = LinearizeRing(_shell, arcSegmentLength);
             LinearRing[] holes = null;
             if (_holes.Length > 0)
             {
                 holes = new LinearRing[_holes.Length];
                 for (int i = 0; i < _holes.Length; i++)
                 {
-                    holes[i] = LinearizeRing(_holes[i]);
+                    holes[i] = LinearizeRing(_holes[i], arcSegmentLength);
                 }
             }
             return Factory.CreatePolygon(shell, holes);
         }
 
-        /// <summary>
-        /// Tolerance-driven linearization is not implemented yet.
-        /// </summary>
-        /// <param name="arcSegmentLength">
-        /// Reserved for the maximum chord length along each arc.
-        /// </param>
-        /// <exception cref="NotSupportedException">
-        /// Always thrown until densification lands. Use <see cref="Linearize()"/>
-        /// for the explicit chord approximation.
-        /// </exception>
-        public Polygon Linearize(double arcSegmentLength)
-        {
-            throw CurvedGeometry.ToleranceLinearizeNotSupported();
-        }
-
-        private LinearRing LinearizeRing(Curve ring)
+        private LinearRing LinearizeRing(Curve ring, double arcSegmentLength)
         {
             LineString line;
             switch (ring)
             {
                 case CircularString circularString:
-                    line = circularString.Linearize();
+                    line = circularString.Linearize(arcSegmentLength);
                     break;
                 case CompoundCurve compoundCurve:
-                    line = compoundCurve.Linearize();
+                    line = compoundCurve.Linearize(arcSegmentLength);
                     break;
                 case LinearRing linearRing:
                     return linearRing;

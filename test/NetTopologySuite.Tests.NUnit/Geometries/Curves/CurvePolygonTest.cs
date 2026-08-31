@@ -224,15 +224,16 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void AreaAndLengthFailClosed()
+        public void AreaAndLengthOverStructuralRings()
         {
+            // All-chord rings, so the closed-form structural-ring metrics are
+            // exact: 10x10 shell minus 2x2 hole; perimeter is the ring sum.
             var shell = Ring((0, 0), (10, 0), (10, 10), (0, 10), (0, 0));
             var hole = Ring((2, 2), (4, 2), (4, 4), (2, 4), (2, 2));
             var cp = new CurvePolygon(shell, new Curve[] { hole }, _factory);
 
-            Assert.That(() => cp.Area, Throws.TypeOf<NotSupportedException>(),
-                "Unconditional cut: all-linear CurvePolygon still throws.");
-            Assert.That(() => cp.Length, Throws.TypeOf<NotSupportedException>());
+            Assert.That(cp.Area, Is.EqualTo(96.0));
+            Assert.That(cp.Length, Is.EqualTo(48.0));
         }
 
         [Test]
@@ -250,10 +251,15 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void LinearizeWithToleranceFailsClosed()
+        public void LinearizeWithToleranceDensifiesRings()
         {
             var cp = FlatShellWithArcHole();
-            Assert.That(() => cp.Linearize(1.0), Throws.TypeOf<NotSupportedException>());
+            var poly = cp.Linearize(1.0);
+            Assert.That(poly, Is.InstanceOf<Polygon>());
+            Assert.That(poly.NumInteriorRings, Is.EqualTo(1));
+            // The arc hole densifies; the chord shell stays its 5 controls.
+            Assert.That(poly.ExteriorRing.NumPoints, Is.EqualTo(5));
+            Assert.That(poly.GetInteriorRingN(0).NumPoints, Is.GreaterThanOrEqualTo(5));
         }
 
         [Test]

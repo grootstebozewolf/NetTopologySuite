@@ -426,7 +426,19 @@ namespace NetTopologySuite.Geometries.Curves
         /// <see cref="LineString"/>, concatenating linearized components and
         /// collapsing shared join points.
         /// </summary>
-        public LineString Linearize()
+        public LineString Linearize() => Linearize(double.NaN);
+
+        /// <summary>
+        /// Returns a chord approximation of this compound curve as a single
+        /// <see cref="LineString"/>.
+        /// </summary>
+        /// <param name="arcSegmentLength">
+        /// Passed through to <see cref="CircularString"/> components, which
+        /// densify by sagitta for a finite value (keeping every supplied
+        /// control as an exact vertex); a non-finite value yields the
+        /// control polyline.
+        /// </param>
+        public LineString Linearize(double arcSegmentLength)
         {
             if (IsEmpty)
             {
@@ -436,7 +448,7 @@ namespace NetTopologySuite.Geometries.Curves
             var coordinates = new List<Coordinate>();
             for (int i = 0; i < _curves.Length; i++)
             {
-                LineString componentLine = LinearizeComponent(_curves[i]);
+                LineString componentLine = LinearizeComponent(_curves[i], arcSegmentLength);
                 var componentCoordinates = componentLine.Coordinates;
                 for (int j = i == 0 ? 0 : 1; j < componentCoordinates.Length; j++)
                 {
@@ -446,27 +458,12 @@ namespace NetTopologySuite.Geometries.Curves
             return Factory.CreateLineString(coordinates.ToArray());
         }
 
-        /// <summary>
-        /// Tolerance-driven linearization is not implemented yet.
-        /// </summary>
-        /// <param name="arcSegmentLength">
-        /// Reserved for the maximum chord length along each arc.
-        /// </param>
-        /// <exception cref="NotSupportedException">
-        /// Always thrown until densification lands. Use <see cref="Linearize()"/>
-        /// for the explicit chord approximation.
-        /// </exception>
-        public LineString Linearize(double arcSegmentLength)
-        {
-            throw CurvedGeometry.ToleranceLinearizeNotSupported();
-        }
-
-        private static LineString LinearizeComponent(Curve component)
+        private static LineString LinearizeComponent(Curve component, double arcSegmentLength)
         {
             switch (component)
             {
                 case CircularString circularString:
-                    return circularString.Linearize();
+                    return circularString.Linearize(arcSegmentLength);
                 case LineString lineString:
                     return lineString;
                 default:

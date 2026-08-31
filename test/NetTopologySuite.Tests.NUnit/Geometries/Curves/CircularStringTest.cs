@@ -280,7 +280,15 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(line, Is.Not.InstanceOf<CircularString>());
             Assert.That(line.NumPoints, Is.EqualTo(3));
             Assert.That(line.Coordinates, Is.EqualTo(cs.Coordinates));
-            Assert.That(() => cs.Linearize(1.0), Throws.TypeOf<NotSupportedException>());
+
+            // Tolerance-driven densification (sagitta; every supplied control
+            // stays an exact vertex — LinearizeAnchorPinningTest pins the
+            // anchor semantics in detail).
+            var densified = cs.Linearize(1.0);
+            Assert.That(densified.NumPoints, Is.GreaterThanOrEqualTo(3));
+            Assert.That(densified.StartPoint.Coordinate, Is.EqualTo(new Coordinate(1, 0)));
+            Assert.That(densified.EndPoint.Coordinate, Is.EqualTo(new Coordinate(-1, 0)));
+            Assert.That(densified.Coordinates, Does.Contain(new Coordinate(0, 1)));
         }
 
         [Test]

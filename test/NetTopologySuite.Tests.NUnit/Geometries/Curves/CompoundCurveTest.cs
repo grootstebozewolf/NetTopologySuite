@@ -320,7 +320,14 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(line.NumPoints, Is.EqualTo(5));
             Assert.That(line.StartPoint.Coordinate, Is.EqualTo(new Coordinate(0, 0)));
             Assert.That(line.EndPoint.Coordinate, Is.EqualTo(new Coordinate(4, 0)));
-            Assert.That(() => cc.Linearize(1.0), Throws.TypeOf<NotSupportedException>());
+
+            // Tolerance-driven densification passes through to the arc
+            // component; controls stay exact vertices and endpoints hold.
+            var densified = cc.Linearize(1.0);
+            Assert.That(densified.NumPoints, Is.GreaterThanOrEqualTo(5));
+            Assert.That(densified.StartPoint.Coordinate, Is.EqualTo(new Coordinate(0, 0)));
+            Assert.That(densified.EndPoint.Coordinate, Is.EqualTo(new Coordinate(4, 0)));
+            Assert.That(densified.Coordinates, Does.Contain(new Coordinate(2, 1)));
         }
     }
 }

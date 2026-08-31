@@ -13,9 +13,11 @@
 // locus (5.1.19 Desc 2b; ticket 615-e), and point-to-curve Distance is EXACT
 // over the locus via DistanceOp.Distance (5.1.41 Desc 2a; ticket 615-f --
 // curve-to-curve stays fail-closed pending arc-arc machinery, 615-h lane).
-// The remaining metrics and analytic ops (Area, Centroid, InteriorPoint)
-// fail closed with NotSupportedException until their arc-aware
-// implementations land; Linearize() is the explicit chord escape hatch.
+// The remaining analytic ops (Centroid, InteriorPoint) fail closed with
+// NotSupportedException until their arc-aware implementations land;
+// Linearize() is the explicit chord approximation and Linearize(tolerance)
+// densifies by sagitta, keeping every control as an exact vertex (JTS
+// f6347444 port).
 // IsValid is rung-1 partial (ticket 615-g): definite-false for implemented
 // clause rules, fail-closed naming the simplicity rung otherwise.
 // IsSimple is decided over the locus for every segment count (ticket 615-h:
@@ -40,9 +42,11 @@ namespace NetTopologySuite.Geometries.Curves
     /// <para/>
     /// <see cref="Length"/>, the envelope, and point-to-curve distance (via
     /// <c>DistanceOp.Distance</c>) are exact over the arc locus; the remaining
-    /// metrics and analytic ops fail closed with
+    /// analytic ops fail closed with
     /// <see cref="NotSupportedException"/> until their arc-aware implementations
-    /// land; <see cref="Linearize()"/> is the explicit chord escape hatch. The inherited <see cref="Curve.IsClosed"/> semantics apply
+    /// land. <see cref="Linearize()"/> is the explicit chord approximation and
+    /// <see cref="Linearize(double)"/> densifies by sagitta. The inherited
+    /// <see cref="Curve.IsClosed"/> semantics apply
     /// (start equals end).
     /// </remarks>
     [Serializable]
@@ -439,19 +443,5 @@ namespace NetTopologySuite.Geometries.Curves
             return Factory.CreateLineString(pts.ToArray());
         }
 
-        /// <summary>
-        /// Tolerance-driven linearization is not implemented yet.
-        /// </summary>
-        /// <param name="arcSegmentLength">
-        /// Reserved for the maximum chord length along each arc.
-        /// </param>
-        /// <exception cref="NotSupportedException">
-        /// Always thrown until densification lands. Use <see cref="Linearize()"/>
-        /// for the explicit chord approximation.
-        /// </exception>
-        public LineString Linearize(double arcSegmentLength)
-        {
-            throw CurvedGeometry.ToleranceLinearizeNotSupported();
-        }
     }
 }
