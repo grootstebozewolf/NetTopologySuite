@@ -64,8 +64,9 @@ namespace NetTopologySuite.Tests.NUnit.Algorithm.Construct
         [Test]
         public void TestLinePointTriangle()
         {
-            CheckCircle("GEOMETRYCOLLECTION (LINESTRING (100 100, 300 100), POINT (250 200))",
-                0.01, 196.49, 164.31, 64.31);
+            const string wkt = "GEOMETRYCOLLECTION (LINESTRING (100 100, 300 100), POINT (250 200))";
+            CheckCircle(wkt, 0.01, 196.49, 164.31, 64.31);
+            CheckCircleAutoTol(wkt, 0.1, 196.49, 164.31, 64.31);
         }
 
         [Test]
@@ -177,6 +178,13 @@ namespace NetTopologySuite.Tests.NUnit.Algorithm.Construct
             Assert.That(Math.Abs(actualRadius - dist) < 2 * tolerance);
         }
 
+        private void CheckCircleAutoTol(string wktObstacles, double tolerance,
+            double x, double y, double expectedRadius)
+        {
+            var lec = new LargestEmptyCircle(Read(wktObstacles), null);
+            CheckCircle(lec, tolerance, x, y, expectedRadius);
+        }
+
         private void CheckCircle(string wktObstacles, double tolerance,
             double x, double y, double expectedRadius)
         {
@@ -194,6 +202,12 @@ namespace NetTopologySuite.Tests.NUnit.Algorithm.Construct
             double x, double y, double expectedRadius)
         {
             var lec = new LargestEmptyCircle(geomObstacles, geomBoundary, tolerance);
+            CheckCircle(lec, tolerance, x, y, expectedRadius);
+        }
+
+        private void CheckCircle(LargestEmptyCircle lec, double tolerance,
+            double x, double y, double expectedRadius)
+        {
             Geometry centerPoint = lec.GetCenter();
             var centerPt = centerPoint.Coordinate;
             var expectedCenter = new Coordinate(x, y);
