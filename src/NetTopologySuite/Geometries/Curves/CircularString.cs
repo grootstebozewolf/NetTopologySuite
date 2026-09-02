@@ -44,7 +44,8 @@ namespace NetTopologySuite.Geometries.Curves
         /// <param name="factory">The geometry factory</param>
         /// <exception cref="ArgumentException">
         /// If the sequence has fewer than 3 points or an even number of points
-        /// (must be 0 or odd and at least 3).
+        /// (must be 0 or odd and at least 3). Four-item
+        /// <c>CIRCULARSTRING(A,B,C,A)</c> is rejected.
         /// </exception>
         public CircularString(CoordinateSequence points, GeometryFactory factory) : base(factory)
         {
@@ -52,23 +53,112 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 points = factory.CoordinateSequenceFactory.Create(0, Ordinates.XY);
             }
-            if (points.Count != 0)
+            if (points.Count != 0 && !IsValidControlCount(points))
             {
-                if (points.Count < 3)
-                {
-                    throw new ArgumentException(
-                        "A non-empty CircularString must have at least 3 control points " +
-                        "(start, on-arc, end of the first arc).", nameof(points));
-                }
-                if (points.Count % 2 == 0)
-                {
-                    throw new ArgumentException(
-                        "A CircularString must have an odd number of control points " +
-                        "(2n + 1 points encode n arcs).", nameof(points));
-                }
+                throw new ArgumentException(
+                    "A CircularString must have an odd number of control points >= 3. " +
+                    "Four-item CIRCULARSTRING (A, B, C, A) is rejected.", nameof(points));
             }
             _points = points;
         }
+
+        /// <summary>
+        /// ISO/IEC 13249-3 / PostGIS: empty, or odd control count ≥ 3.
+        /// Four-item <c>(A, B, C, A)</c> is rejected.
+        /// Port of JTS 81c2e996.
+        /// </summary>
+        public static bool IsValidControlCount(CoordinateSequence seq)
+        {
+            if (seq == null || seq.Count == 0)
+            {
+                return true;
+            }
+            int n = seq.Count;
+            return n >= 3 && (n & 1) == 1;
+        }
+
+        /// <summary>
+        /// JTS on-ramp only: <c>(A, B, A)</c> with distinct A, B.
+        /// Not the ISO/IEC 13249-3 full-circle form.
+        /// </summary>
+        public static bool IsDiameterOnRamp(CoordinateSequence seq)
+        {
+            if (seq == null || seq.Count != 3)
+            {
+                return false;
+            }
+            var a = seq.GetCoordinate(0);
+            var b = seq.GetCoordinate(1);
+            var a2 = seq.GetCoordinate(2);
+            return a.Equals2D(a2) && !a.Equals2D(b);
+        }
+
+        /// <summary>
+        /// <c>(A, B, A)</c> with <c>A = B</c>. Refused.
+        /// </summary>
+        public static bool IsRefusedDiameterOnRamp(CoordinateSequence seq)
+        {
+            if (seq == null || seq.Count != 3)
+            {
+                return false;
+            }
+            var a = seq.GetCoordinate(0);
+            var b = seq.GetCoordinate(1);
+            var a2 = seq.GetCoordinate(2);
+            return a.Equals2D(a2) && a.Equals2D(b);
+        }
+
+        /// <summary>
+        /// On add/read, rewrite <c>(A, B, A)</c> to
+        /// <c>CIRCULARSTRING (A, C, B, D, A)</c>. Type stays
+        /// <c>CIRCULARSTRING</c>. Never flatten.
+        /// </summary>
+        public static CoordinateSequence OnAddOrRead(CoordinateSequence seq,
+            CoordinateSequenceFactory csf)
+        {
+            if (IsRefusedDiameterOnRamp(seq))
+            {
+                throw new ArgumentException(RefusedDiameterMessage());
+            }
+            if (IsDiameterOnRamp(seq))
+            {
+                return ExpandDiameterOnRamp(seq, csf);
+            }
+            return seq;
+        }
+
+        public static string RefusedDiameterMessage()
+        {
+            return "CIRCULARSTRING (A, B, A) is a JTS on-ramp only when A and B "
+                + "are distinct; A = B is refused. Not the ISO/IEC 13249-3 "
+                + "full-circle form.";
+        }
+
+        /// <summary>
+        /// Diameter A–B → five tokens <c>(A, C, B, D, A)</c>.
+        /// </summary>
+        public static CoordinateSequence ExpandDiameterOnRamp(CoordinateSequence seq,
+            CoordinateSequenceFactory csf)
+        {
+            var a = seq.GetCoordinate(0);
+            var b = seq.GetCoordinate(1);
+            double dx = b.X - a.X;
+            double dy = b.Y - a.Y;
+            double ox = (a.X + b.X) * 0.5;
+            double oy = (a.Y + b.Y) * 0.5;
+            double r = 0.5 * Math.Sqrt(dx * dx + dy * dy);
+            double theta = Math.Atan2(dy, dx);
+            var c = a.Copy();
+            c.X = ox + r * Math.Cos(theta - Math.PI / 2.0);
+            c.Y = oy + r * Math.Sin(theta - Math.PI / 2.0);
+            var d = a.Copy();
+            d.X = ox + r * Math.Cos(theta + Math.PI / 2.0);
+            d.Y = oy + r * Math.Sin(theta + Math.PI / 2.0);
+            return csf.Create(new[] { a.Copy(), c, b.Copy(), d, a.Copy() });
+        }
+
+        /// <inheritdoc/>
+        public override bool IsValid => IsValidControlCount(_points);
 
         /// <summary>The control points of this <c>CircularString</c>.</summary>
         public CoordinateSequence CoordinateSequence => _points;

@@ -102,6 +102,13 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
+        public void ReadRejectsClosedFourPointCircle()
+        {
+            Assert.Throws<ArgumentException>(() =>
+                new WKTReader().Read("CIRCULARSTRING (-5 0, 0 5, 5 0, -5 0)"));
+        }
+
+        [Test]
         public void ReadRejectsNonContiguousCompoundCurve()
         {
             Assert.Throws<ArgumentException>(() =>
