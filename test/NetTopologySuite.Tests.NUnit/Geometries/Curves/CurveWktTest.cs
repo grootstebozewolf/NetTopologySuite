@@ -107,5 +107,30 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.Throws<ArgumentException>(() =>
                 new WKTReader().Read("COMPOUNDCURVE ((0 0, 1 0), (2 0, 3 0))"));
         }
+
+        [TestCase("CLOTHOID EMPTY")]
+        [TestCase("CIRCLE EMPTY")]
+        [TestCase("GEODESICSTRING EMPTY")]
+        [TestCase("NURBSCURVE EMPTY")]
+        [TestCase("SPIRALCURVE EMPTY")]
+        [TestCase("ELLIPTICALCURVE EMPTY")]
+        [TestCase("CLOTHOID Z EMPTY")]
+        [TestCase("COMPOUNDCURVE (CLOTHOID EMPTY)")]
+        public void SqlMmSection421TypesAreNamedRefusesNotUnknown(string wkt)
+        {
+            var ex = Assert.Throws<ParseException>(() => new WKTReader().Read(wkt));
+            Assert.That(ex.Message, Does.Contain("not optional"));
+            Assert.That(ex.Message, Does.Contain("13249-3"));
+            Assert.That(ex.Message, Does.Not.Contain("Unknown type"));
+            Assert.That(ex.Message, Does.Not.Contain("Unexpected token"));
+        }
+
+        [Test]
+        public void GenuineUnknownTypeStaysUnknown()
+        {
+            var ex = Assert.Throws<ParseException>(() => new WKTReader().Read("NOTATYPE (0 0)"));
+            Assert.That(ex.Message, Does.Contain("Unknown type"));
+            Assert.That(ex.Message, Does.Not.Contain("not optional"));
+        }
     }
 }

@@ -775,6 +775,8 @@ namespace NetTopologySuite.IO
                 returned = ReadTriangleText(tokens, factory, ordinateFlags);
             else if (IsTypeName(tokens, type, WKTConstants.TIN))
                 returned = ReadTinText(tokens, factory, ordinateFlags);
+            else if (IsUnimplementedSqlMmCurve(type))
+                throw SqlMmUnimplemented(type);
             else throw new ParseException("Unknown type: " + type);
 
             if (returned == null)
@@ -800,6 +802,43 @@ namespace NetTopologySuite.IO
             }
     
             return true;
+        }
+
+        /// <summary>
+        /// True when <paramref name="type"/> is <paramref name="typeName"/>
+        /// with an optional Z / M / ZM suffix. Unlike <see cref="IsTypeName"/>,
+        /// a longer leftover (CIRCULARSTRING vs CIRCLE) is not an error — it
+        /// is simply not a match.
+        /// </summary>
+        private static bool HasTypeNameWithDimSuffix(string type, string typeName)
+        {
+            if (!type.StartsWith(typeName, StringComparison.OrdinalIgnoreCase))
+                return false;
+            string modifiers = type.Substring(typeName.Length);
+            return modifiers.Length == 0
+                || modifiers.Equals(WKTConstants.Z, StringComparison.OrdinalIgnoreCase)
+                || modifiers.Equals(WKTConstants.M, StringComparison.OrdinalIgnoreCase)
+                || modifiers.Equals(WKTConstants.ZM, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Instantiable ST_Curve subtypes in ISO/IEC 13249-3 §4.2.1 that NTS
+        /// does not yet carry. Not optional extras. Do not call them unknown.
+        /// </summary>
+        private static bool IsUnimplementedSqlMmCurve(string type)
+        {
+            return HasTypeNameWithDimSuffix(type, WKTConstants.CLOTHOID)
+                || HasTypeNameWithDimSuffix(type, WKTConstants.CIRCLE)
+                || HasTypeNameWithDimSuffix(type, WKTConstants.GEODESICSTRING)
+                || HasTypeNameWithDimSuffix(type, WKTConstants.ELLIPTICALCURVE)
+                || HasTypeNameWithDimSuffix(type, WKTConstants.NURBSCURVE)
+                || HasTypeNameWithDimSuffix(type, WKTConstants.SPIRALCURVE);
+        }
+
+        private static ParseException SqlMmUnimplemented(string type)
+        {
+            return new ParseException(
+                "SQL/MM type is not optional (ISO/IEC 13249-3 §4.2.1) and is not implemented: " + type);
         }
 
 /// <summary>
@@ -1077,6 +1116,9 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
                 GetNextWord(tokens);
                 return ReadCompoundCurveText(tokens, factory, ordinateFlags);
             }
+
+            if (IsUnimplementedSqlMmCurve(current))
+                throw SqlMmUnimplemented(current);
 
             throw new ParseException("Unexpected token: " + current);
         }
