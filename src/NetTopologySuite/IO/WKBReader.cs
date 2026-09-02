@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using NetTopologySuite.Geometries;
+using NetTopologySuite.Geometries.Curves;
 
 namespace NetTopologySuite.IO
 {
@@ -226,6 +227,12 @@ namespace NetTopologySuite.IO
                     case WKBGeometryTypes.WKBGeometryCollectionM:
                     case WKBGeometryTypes.WKBGeometryCollectionZM:
                         return ReadGeometryCollection(reader, cs, srid);
+                    case WKBGeometryTypes.WKBCircularString:
+                        return ReadCircularString(reader, cs, srid);
+                    case WKBGeometryTypes.WKBCompoundCurve:
+                        return ReadCompoundCurve(reader, cs, srid);
+                    case WKBGeometryTypes.WKBCurvePolygon:
+                        return ReadCurvePolygon(reader, cs, srid);
                     default:
                         throw new ArgumentException("Geometry type not recognized. GeometryCode: " + geometryType);
                 }
@@ -699,6 +706,60 @@ namespace NetTopologySuite.IO
         {
             get => !IsStrict;
             set => IsStrict = !value;
+        }
+
+        protected Geometry ReadCircularString(BinaryReader reader, CoordinateSystem cs, int srid)
+        {
+            var factory = _geometryServices.CreateGeometryFactory(_precisionModel, srid, _sequenceFactory);
+            int numPoints = ReadNumField(reader, FieldNumCoords, ReasonableNumCoordinates(reader.BaseStream, cs));
+            var sequence = ReadCoordinateSequence(reader, numPoints, cs);
+            return new CircularString(sequence, factory);
+        }
+
+        protected Geometry ReadCompoundCurve(BinaryReader reader, CoordinateSystem cs, int srid)
+        {
+            var factory = _geometryServices.CreateGeometryFactory(_precisionModel, srid, _sequenceFactory);
+            int numCurves = ReadNumField(reader, FieldNumElements, ReasonableNumElements(reader.BaseStream));
+            var curves = new Curve[numCurves];
+            for (int i = 0; i < numCurves; i++)
+                curves[i] = ReadCurveMember(reader, srid);
+            return new CompoundCurve(curves, factory);
+        }
+
+        protected Geometry ReadCurvePolygon(BinaryReader reader, CoordinateSystem cs, int srid)
+        {
+            var factory = _geometryServices.CreateGeometryFactory(_precisionModel, srid, _sequenceFactory);
+            int numRings = ReadNumField(reader, FieldNumRings, ReasonableNumElements(reader.BaseStream));
+            if (numRings == 0)
+                return new CurvePolygon(null, factory);
+
+            var shell = ReadCurveMember(reader, srid);
+            var holes = new Curve[numRings - 1];
+            for (int i = 0; i < numRings - 1; i++)
+                holes[i] = ReadCurveMember(reader, srid);
+            return new CurvePolygon(shell, holes, factory);
+        }
+
+        private Curve ReadCurveMember(BinaryReader reader, int srid)
+        {
+            ReadByteOrder(reader);
+            int srid2 = srid;
+            var geometryType = ReadGeometryType(reader, out var cs2, ref srid2);
+            if (srid2 < 0) srid2 = srid;
+            switch (geometryType)
+            {
+                case WKBGeometryTypes.WKBLineString:
+                case WKBGeometryTypes.WKBLineStringZ:
+                case WKBGeometryTypes.WKBLineStringM:
+                case WKBGeometryTypes.WKBLineStringZM:
+                    return (Curve)ReadLineString(reader, cs2, srid2);
+                case WKBGeometryTypes.WKBCircularString:
+                    return (Curve)ReadCircularString(reader, cs2, srid2);
+                case WKBGeometryTypes.WKBCompoundCurve:
+                    return (Curve)ReadCompoundCurve(reader, cs2, srid2);
+                default:
+                    throw new ArgumentException("LineString, CircularString or CompoundCurve expected as curve member");
+            }
         }
 
         /// <summary>
