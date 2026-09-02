@@ -63,6 +63,37 @@ namespace NetTopologySuite.IO
         public const string TIN = "TIN";
 
         /// <summary>
+        /// Token text for ISO/IEC 13249-3 §4.2.7 ST_Circle. Instantiable;
+        /// NTS has no carrier yet — the reader names the type and refuses.
+        /// </summary>
+        public const string CIRCLE = "CIRCLE";
+        /// <summary>
+        /// Token text for ISO/IEC 13249-3 §4.2.8 ST_GeodesicString.
+        /// Instantiable; named refuse until a carrier exists.
+        /// </summary>
+        public const string GEODESICSTRING = "GEODESICSTRING";
+        /// <summary>
+        /// Token text for ISO/IEC 13249-3 §4.2.9 ST_EllipticalCurve.
+        /// Instantiable; named refuse until a carrier exists.
+        /// </summary>
+        public const string ELLIPTICALCURVE = "ELLIPTICALCURVE";
+        /// <summary>
+        /// Token text for ISO/IEC 13249-3 §4.2.10 ST_NURBSCurve.
+        /// Instantiable; named refuse until a carrier exists.
+        /// </summary>
+        public const string NURBSCURVE = "NURBSCURVE";
+        /// <summary>
+        /// Token text for ISO/IEC 13249-3 §4.2.11 ST_Clothoid.
+        /// Instantiable; named refuse until a carrier exists.
+        /// </summary>
+        public const string CLOTHOID = "CLOTHOID";
+        /// <summary>
+        /// Token text for ISO/IEC 13249-3 §4.2.12 ST_SpiralCurve.
+        /// Instantiable; named refuse until a carrier exists.
+        /// </summary>
+        public const string SPIRALCURVE = "SPIRALCURVE";
+
+        /// <summary>
         /// Token text for empty geometries
         /// </summary>
         public const string EMPTY = "EMPTY";
