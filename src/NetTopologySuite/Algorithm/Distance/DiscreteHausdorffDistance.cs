@@ -151,6 +151,15 @@ namespace NetTopologySuite.Algorithm.Distance
 
         private void ComputeOrientedDistance(Geometry discreteGeom, Geometry geom, PointPairDistance ptDist)
         {
+            // Maintainability: two named pairs share one closed-form gate.
+            // Soundness: vertex DHD on control chords misses the arc apex
+            // (√949/6 − 7/6) and the two-disc far-point (10).
+            // Performance: certified pairs skip densify.
+            if (CurveCertifiedHausdorff.TryOriented(discreteGeom, geom, ptDist))
+            {
+                return;
+            }
+
             var distFilter = new MaxPointDistanceFilter(geom);
             discreteGeom.Apply(distFilter);
             ptDist.SetMaximum(distFilter.MaxPointDistance);
