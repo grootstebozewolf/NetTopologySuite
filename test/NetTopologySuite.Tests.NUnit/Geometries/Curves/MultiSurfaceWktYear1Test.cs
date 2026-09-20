@@ -7,8 +7,9 @@
 // ISO/IEC 13249-3 §5.1.67 curve names NTS has no carrier for (CIRCLE,
 // GEODESICSTRING, ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE) are
 // named and refused via IsUnimplementedSqlMmCurve. TRIANGLE / TIN /
-// POLYHEDRALSURFACE / COMPOUNDSURFACE are not Year-1 members. WKB 12 is
-// Ticket 8 — not this file.
+// POLYHEDRALSURFACE / COMPOUNDSURFACE are not Year-1 members. Ticket 9:
+// Year-1 WKB 12 is complete (no longer "partial"); typed members stay in
+// MultiSurfaceMembersYear1Test. Does not remint WKT.
 
 using NetTopologySuite.Geometries;
 using NetTopologySuite.Geometries.Curves;

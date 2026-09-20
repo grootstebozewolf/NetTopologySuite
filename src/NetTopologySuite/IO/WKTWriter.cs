@@ -1191,7 +1191,7 @@ namespace NetTopologySuite.IO
             for (int i = 0; i < multiSurface.NumGeometries; i++)
             {
                 if (i > 0) writer.Write(", ");
-                AppendSurfaceMemberText(multiSurface.GetGeometryN(i), outputOrdinates, useFormatting, level + 1, writer, ordinateFormat);
+                AppendSurfaceMemberText((Geometry)multiSurface.GetGeometryN(i), outputOrdinates, useFormatting, level + 1, writer, ordinateFormat);
             }
             writer.Write(")");
         }

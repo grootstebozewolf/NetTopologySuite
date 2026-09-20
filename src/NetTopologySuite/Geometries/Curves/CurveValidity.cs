@@ -224,7 +224,7 @@ namespace NetTopologySuite.Geometries.Curves
             var elementRings = new System.Collections.Generic.List<System.Collections.Generic.List<Curve>>();
             for (int e = 0; e < ms.NumGeometries; e++)
             {
-                var element = ms.GetGeometryN(e);
+                var element = (Geometry)ms.GetGeometryN(e);
                 if (element.IsEmpty) continue;
                 elementRings.Add(CollectRings(element));
             }
