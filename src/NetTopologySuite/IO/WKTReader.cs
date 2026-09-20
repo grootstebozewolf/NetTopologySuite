@@ -1300,6 +1300,15 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
 
         /// <summary>
         /// Creates a <c>MultiSurface</c> (GEOS / SQL/MM) using the next token in the stream.
+        /// NTS Year-1 member production: <c>surfaceMember = polygonText | curvePolygonGeometry</c>
+        /// (Polygon | CurvePolygon only). CurvePolygon members reuse
+        /// <see cref="ReadCurvePolygonText"/>, so their rings obey the Year-1
+        /// LS|CS|CC lock (including the 615-i tagged-<c>LINESTRING</c> interop
+        /// ring and the reader-only nested-<c>COMPOUNDCURVE</c> refusal).
+        /// The six ISO/IEC 13249-3 §5.1.67 curve names NTS has no carrier for
+        /// are named via <see cref="IsUnimplementedSqlMmCurve"/>; TRIANGLE, TIN,
+        /// POLYHEDRALSURFACE and COMPOUNDSURFACE are not Year-1 members.
+        /// The narrowing is NTS scope, not ISO.
         /// </summary>
         private Geometries.Curves.MultiSurface ReadMultiSurfaceText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags)
         {
@@ -1310,31 +1319,49 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
             var surfaces = new List<Geometry>();
             do
             {
-                string current = LookAheadWord(tokens);
-                if (current.StartsWith(WKTConstants.CURVEPOLYGON, StringComparison.OrdinalIgnoreCase))
-                {
-                    GetNextWord(tokens);
-                    CheckCurveComponentZm(GetComponentOrdinateFlags(tokens, current, WKTConstants.CURVEPOLYGON), ordinateFlags, WKTConstants.CURVEPOLYGON);
-                    surfaces.Add(ReadCurvePolygonText(tokens, factory, ordinateFlags));
-                }
-                else if (current.StartsWith(WKTConstants.POLYGON, StringComparison.OrdinalIgnoreCase)
-                         || current.Equals(WKTConstants.EMPTY) || current.Equals("("))
-                {
-                    if (current.StartsWith(WKTConstants.POLYGON, StringComparison.OrdinalIgnoreCase))
-                    {
-                        GetNextWord(tokens);
-                        CheckCurveComponentZm(GetComponentOrdinateFlags(tokens, current, WKTConstants.POLYGON), ordinateFlags, WKTConstants.POLYGON);
-                    }
-                    surfaces.Add(ReadPolygonText(tokens, factory, ordinateFlags));
-                }
-                else
-                    throw new ParseException("Expected POLYGON or CURVEPOLYGON in MULTISURFACE, got: " + current);
-
+                surfaces.Add(ReadSurfaceMemberText(tokens, factory, ordinateFlags));
                 nextToken = GetNextCloserOrComma(tokens);
             }
             while (nextToken.Equals(","));
 
             return new Geometries.Curves.MultiSurface(surfaces.ToArray(), factory);
+        }
+
+        /// <summary>
+        /// NTS Year-1 <c>surfaceMember</c>: a tagged or bare <c>polygonText</c>,
+        /// or a tagged <c>curvePolygonGeometry</c>. Year-2 curve keywords are
+        /// refused through <see cref="IsUnimplementedSqlMmCurve"/>; omitted
+        /// surface types and any other token are Year-1 unexpected members.
+        /// </summary>
+        private Geometry ReadSurfaceMemberText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags)
+        {
+            string current = LookAheadWord(tokens);
+
+            if (IsUnimplementedSqlMmCurve(current))
+                throw SqlMmUnimplemented(current);
+
+            if (HasTypeNameWithDimSuffix(current, WKTConstants.CURVEPOLYGON))
+            {
+                GetNextWord(tokens);
+                CheckCurveComponentZm(GetComponentOrdinateFlags(tokens, current, WKTConstants.CURVEPOLYGON), ordinateFlags, WKTConstants.CURVEPOLYGON);
+                return ReadCurvePolygonText(tokens, factory, ordinateFlags);
+            }
+
+            if (HasTypeNameWithDimSuffix(current, WKTConstants.POLYGON)
+                || current.Equals(WKTConstants.EMPTY) || current.Equals("("))
+            {
+                if (HasTypeNameWithDimSuffix(current, WKTConstants.POLYGON))
+                {
+                    GetNextWord(tokens);
+                    CheckCurveComponentZm(GetComponentOrdinateFlags(tokens, current, WKTConstants.POLYGON), ordinateFlags, WKTConstants.POLYGON);
+                }
+                return ReadPolygonText(tokens, factory, ordinateFlags);
+            }
+
+            throw new ParseException(
+                "Unexpected Year-1 MultiSurface member token '" + current +
+                "': NTS Year-1 carries Polygon | CurvePolygon only " +
+                "(surfaceMember = polygonText | curvePolygonGeometry).");
         }
 
         /// <summary>

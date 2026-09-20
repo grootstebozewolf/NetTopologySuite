@@ -1168,7 +1168,15 @@ namespace NetTopologySuite.IO
         }
 
         /// <summary>
-        /// Converts a <c>MultiSurface</c> to MultiSurface Tagged Text (GEOS / SQL/MM).
+        /// Converts a <c>MultiSurface</c> to MultiSurface Tagged Text (SQL/MM).
+        /// Year-1 members: tagged <c>POLYGON</c> (<c>polygonText</c>) or tagged
+        /// <c>CURVEPOLYGON</c> (<c>curvePolygonGeometry</c>, which reuses
+        /// <see cref="AppendCurvePolygonTaggedText"/> so LineString rings stay
+        /// bare). The six ISO/IEC 13249-3 §5.1.67 curve types NTS has no
+        /// carrier for, and the omitted surface keywords TRIANGLE / TIN /
+        /// POLYHEDRALSURFACE / COMPOUNDSURFACE, have no Year-1 value to write.
+        /// A <see cref="GeometryCollection"/> of surfaces is written as
+        /// <c>GEOMETRYCOLLECTION</c>, never rewritten as <c>MULTISURFACE</c>.
         /// </summary>
         private void AppendMultiSurfaceTaggedText(Geometries.Curves.MultiSurface multiSurface, Ordinates outputOrdinates, bool useFormatting, int level, TextWriter writer, OrdinateFormat ordinateFormat)
         {
@@ -1183,9 +1191,33 @@ namespace NetTopologySuite.IO
             for (int i = 0; i < multiSurface.NumGeometries; i++)
             {
                 if (i > 0) writer.Write(", ");
-                AppendGeometryTaggedText(multiSurface.GetGeometryN(i), outputOrdinates, useFormatting, level + 1, writer, ordinateFormat);
+                AppendSurfaceMemberText(multiSurface.GetGeometryN(i), outputOrdinates, useFormatting, level + 1, writer, ordinateFormat);
             }
             writer.Write(")");
+        }
+
+        /// <summary>
+        /// Year-1 <c>surfaceMember</c> tagging: <c>Polygon</c> as tagged
+        /// <c>POLYGON</c>, <c>CurvePolygon</c> via
+        /// <see cref="AppendCurvePolygonTaggedText"/>.
+        /// </summary>
+        private void AppendSurfaceMemberText(Geometry member, Ordinates outputOrdinates, bool useFormatting, int level, TextWriter writer, OrdinateFormat ordinateFormat)
+        {
+            switch (member)
+            {
+                case Geometries.Curves.CurvePolygon curvePolygon:
+                    AppendCurvePolygonTaggedText(curvePolygon, outputOrdinates, useFormatting, level, writer, ordinateFormat);
+                    break;
+
+                case Polygon polygon:
+                    AppendPolygonTaggedText(polygon, outputOrdinates, useFormatting, level, writer, ordinateFormat);
+                    break;
+
+                default:
+                    throw new ArgumentException(
+                        "The NTS Year-1 WKT writer emits only Polygon or CurvePolygon MultiSurface members, got "
+                        + member.GetType().Name + ".");
+            }
         }
 
         /// <summary>
