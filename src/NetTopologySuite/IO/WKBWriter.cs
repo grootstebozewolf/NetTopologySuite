@@ -972,7 +972,12 @@ namespace NetTopologySuite.IO
         }
 
         /// <summary>
-        /// Write a MultiCurve in its WKB format.
+        /// Write a MultiCurve in its WKB format (ISO/IEC 13249-3 / GEOS type 11).
+        /// Each member is nested WKB LineString (2) | CircularString (8) |
+        /// CompoundCurve (9) only — the Year-1 g4 <c>curveMember</c> grammar
+        /// from Ticket 4. EMPTY is a type-11 header with zero members.
+        /// Z/M/ZM use the same ISO +1000/+2000/+3000 table as types 8–10.
+        /// SRID/EWKB follows the same header path as MultiLineString.
         /// </summary>
         /// <param name="multiCurve">The MultiCurve</param>
         /// <param name="writer">The writer</param>
