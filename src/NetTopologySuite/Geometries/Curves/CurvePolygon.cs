@@ -9,7 +9,7 @@
 //
 // Status: PRODUCTION (structure + Year-1 WKT + WKB type 10 + §8.2 typed members).
 // Year-1 WKB 10 is complete (Tickets 1–3; no longer partial). CIRCLE is a
-// Year-1 ring type (Ticket 19, WKT). The five ISO §5.1.67 curve names NTS
+// Year-1 ring type (Ticket 19 WKT / Ticket 20 WKB type 18). The five ISO §5.1.67 curve names NTS
 // has no carrier for (GEODESICSTRING, ELLIPTICALCURVE, NURBSCURVE,
 // CLOTHOID, SPIRALCURVE) remain omitted.
 // Rings are Curve, never collapsed to LinearRing (F-CP). Area and Length
@@ -44,7 +44,7 @@ namespace NetTopologySuite.Geometries.Curves
     /// structural contract; ISO/IEC 13249-3 §8.2 <c>ST_ExteriorRing</c> /
     /// <c>ST_NumInteriorRing</c> / <c>ST_InteriorRingN</c>).
     /// Year-1 WKT and WKB type 10 are complete. <see cref="Circle"/> is a
-    /// Year-1 ring (Ticket 19, WKT). The five ISO/IEC 13249-3
+    /// Year-1 ring (Ticket 19 WKT / Ticket 20 WKB type 18). The five ISO/IEC 13249-3
     /// §5.1.67 curve names NTS has no carrier for (
     /// <c>GEODESICSTRING</c>, <c>ELLIPTICALCURVE</c>, <c>NURBSCURVE</c>,
     /// <c>CLOTHOID</c>, <c>SPIRALCURVE</c>) remain omitted.

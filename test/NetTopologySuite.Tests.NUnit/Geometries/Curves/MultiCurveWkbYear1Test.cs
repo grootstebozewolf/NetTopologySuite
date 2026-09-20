@@ -244,7 +244,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         [TestCase(11u, Description = "nested MultiCurve")]
         [TestCase(12u, Description = "nested MultiSurface")]
         [TestCase(13u, Description = "unknown type 13")]
-        [TestCase(18u, Description = "unknown type 18 (not a Year-2 invention)")]
+        [TestCase(19u, Description = "unknown type 19 (Year-2 curve still refused)")]
         public void Ticket5_RejectsNonYear1NestedMemberTypeCode(uint nestedType)
         {
             byte[] member = _wkbWriter.Write(_wktReader.Read("LINESTRING (0 0, 1 0)"));
@@ -365,7 +365,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
 
         /// <summary>
         /// Walks a little-endian MultiCurve WKB and asserts every nested
-        /// geometry type is 2, 8 or 9 (ISO Z/M/ZM reduced via % 1000).
+        /// geometry type is 2, 8, 9 or 18 (ISO Z/M/ZM reduced via % 1000).
         /// </summary>
         private static void AssertYear1NestedTypeCodesOnly(byte[] bytes)
         {
@@ -386,7 +386,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             uint raw = ReadTypeLe(bytes, offset + 1);
             bool hasSrid = (raw & 0x20000000u) != 0;
             uint code = (raw & 0xFFFFu) % 1000;
-            Assert.That(code, Is.EqualTo(2u).Or.EqualTo(8u).Or.EqualTo(9u),
+            Assert.That(code, Is.EqualTo(2u).Or.EqualTo(8u).Or.EqualTo(9u).Or.EqualTo(18u),
                 "Year-1 member type at offset " + offset);
             int header = hasSrid ? 9 : 5;
             offset += header;

@@ -235,7 +235,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         [TestCase(15u, Description = "PolyhedralSurface")]
         [TestCase(16u, Description = "nested TIN")]
         [TestCase(17u, Description = "Triangle (object-model type, not Year-1 wire)")]
-        [TestCase(18u, Description = "unknown type 18 (not a Circle / Year-2 invention)")]
+        [TestCase(18u, Description = "Circle (not a Year-1 TIN patch)")]
         public void Ticket17_RejectsNonYear1NestedMemberTypeCode(uint nestedType)
         {
             byte[] member = _wkbWriter.Write(_wktReader.Read("POLYGON ((0 0, 1 0, 0 1, 0 0))"));
