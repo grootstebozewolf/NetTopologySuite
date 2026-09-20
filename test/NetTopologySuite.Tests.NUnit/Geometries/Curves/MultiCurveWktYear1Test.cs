@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // AI-drafted, human-reviewed.  Assisted-by: Cursor Grok 4.6
 //
-// Ticket 4 — Year-1 ST_MultiCurve WKT member grammar (ISO/IEC 13249-3).
+// Ticket 4 — NTS Year-1 ST_MultiCurve WKT member grammar.
 // Members: LineString (bare) | CircularString | CompoundCurve. Reuses Ticket 1
-// g4 curveMember / ReadCurveText. Year-2 keywords and MULTICIRCULARSTRING /
-// MULTICOMPOUNDCURVE reject on read. Ticket 6: Year-1 WKB 11 is complete
-// (no longer "partial"); Year-2 member names stay omitted. Does not remint WKT.
+// ReadCurveText. The six ISO/IEC 13249-3 §5.1.67 curve names NTS has no
+// carrier for (CIRCLE, GEODESICSTRING, ELLIPTICALCURVE, NURBSCURVE, CLOTHOID,
+// SPIRALCURVE) are named and refused; MULTICIRCULARSTRING / MULTICOMPOUNDCURVE
+// reject on read. Ticket 6: Year-1 WKB 11 is complete (no longer "partial").
+// Does not remint WKT.
 
 using System;
 using NetTopologySuite.Geometries;
@@ -25,9 +27,14 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         private readonly WKTWriter _writer = new WKTWriter();
         private readonly WKTWriter _writerZ = new WKTWriter(3);
 
-        private static readonly string[] Year2Keywords =
+        /// <summary>
+        /// The ISO/IEC 13249-3 §5.1.67 keywords for the instantiable §4.2.1 curve
+        /// types NTS has no carrier for. These spellings, not shortened ones:
+        /// the standard has no GEODESIC, ELLIPSE, NURBS or SPIRAL keyword.
+        /// </summary>
+        private static readonly string[] UnimplementedSqlMmCurveKeywords =
         {
-            "CIRCLE", "GEODESIC", "ELLIPSE", "NURBS", "CLOTHOID", "SPIRAL"
+            "CIRCLE", "GEODESICSTRING", "ELLIPTICALCURVE", "NURBSCURVE", "CLOTHOID", "SPIRALCURVE"
         };
 
         [TestCase("MULTICURVE EMPTY", Description = "Ticket4 EMPTY")]
@@ -154,26 +161,45 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [TestCase("CIRCLE", "CIRCLE (0 0, 1 0, 0 1)")]
-        [TestCase("GEODESIC", "GEODESIC ((0 0, 10 0, 10 10))")]
-        [TestCase("ELLIPSE", "ELLIPSE (0 0, 1 0, 0 1)")]
-        [TestCase("NURBS", "NURBS ((0 0, 10 0, 10 10))")]
+        [TestCase("GEODESICSTRING", "GEODESICSTRING (0 0, 10 0, 10 10)")]
+        [TestCase("ELLIPTICALCURVE", "ELLIPTICALCURVE (0 0, 1, 1, 0, 90)")]
+        [TestCase("NURBSCURVE", "NURBSCURVE ((0 0, 10 0, 10 10))")]
         [TestCase("CLOTHOID", "CLOTHOID ((0 0, 10 0, 10 10))")]
-        [TestCase("SPIRAL", "SPIRAL ((0 0, 10 0, 10 10))")]
-        public void Ticket4_RejectsYear2KeywordAsMember(string keyword, string memberBody)
+        [TestCase("SPIRALCURVE", "SPIRALCURVE ((0 0, 10 0, 10 10))")]
+        public void Ticket4_RejectsUnimplementedSqlMmCurveAsMember(string keyword, string memberBody)
         {
             var ex = Assert.Throws<ParseException>(() =>
                 _reader.Read("MULTICURVE (" + memberBody + ")"));
             Assert.That(ex.Message, Does.Contain(keyword));
-            Assert.That(ex.Message, Does.Contain("Year-2"));
-            Assert.That(ex.Message, Does.Contain("never silently flattened"));
+            Assert.That(ex.Message, Does.Contain("§4.2.1"));
+            Assert.That(ex.Message, Does.Contain("not implemented"));
+            Assert.That(ex.Message, Does.Not.Contain("Unknown type"));
         }
 
         [TestCase("CIRCLE Z (0 0, 1 0, 0 1)")]
-        [TestCase("GEODESICM ((0 0, 1 0, 1 1))")]
-        public void Ticket4_RejectsYear2KeywordWithOrdinateSuffixAsMember(string memberBody)
+        [TestCase("GEODESICSTRINGM (0 0, 1 0, 1 1)")]
+        [TestCase("SPIRALCURVEZM ((0 0, 1 0, 1 1))")]
+        public void Ticket4_RejectsUnimplementedSqlMmCurveWithOrdinateSuffixAsMember(string memberBody)
         {
-            Assert.Throws<ParseException>(() =>
+            var ex = Assert.Throws<ParseException>(() =>
                 _reader.Read("MULTICURVE (" + memberBody + ")"));
+            Assert.That(ex.Message, Does.Contain("not implemented"));
+        }
+
+        /// <summary>
+        /// The standard has no GEODESIC / ELLIPSE / NURBS / SPIRAL keyword
+        /// (ISO/IEC 13249-3 §5.1.67). They are ordinary unknown words, and must
+        /// not be refused as though they named an ISO type.
+        /// </summary>
+        [TestCase("GEODESIC ((0 0, 1 0, 1 1))")]
+        [TestCase("ELLIPSE (0 0, 1 0, 0 1)")]
+        [TestCase("NURBS ((0 0, 1 0, 1 1))")]
+        [TestCase("SPIRAL ((0 0, 1 0, 1 1))")]
+        public void Ticket4_ShortenedSpellingsAreNotIsoTypeNames(string memberBody)
+        {
+            var ex = Assert.Throws<ParseException>(() =>
+                _reader.Read("MULTICURVE (" + memberBody + ")"));
+            Assert.That(ex.Message, Does.Not.Contain("not implemented"));
         }
 
         [TestCase("MULTICIRCULARSTRING ((0 0, 1 1, 2 0))")]
@@ -274,16 +300,17 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         /// <summary>
-        /// Year-2 type words as whole tokens. Substring checks are unsafe:
-        /// <c>CIRCULARSTRING</c> contains <c>CIRCLE</c>.
+        /// Whole-token match. A bare substring test would also fire on a longer
+        /// type word that merely starts with one of these, so the boundaries
+        /// stay even though no Year-1 keyword currently collides.
         /// </summary>
         private static void AssertWriterHasNoYear2Keyword(string wkt)
         {
             string upper = wkt.ToUpperInvariant();
-            foreach (string keyword in Year2Keywords)
+            foreach (string keyword in UnimplementedSqlMmCurveKeywords)
             {
                 Assert.That(upper, Does.Not.Match(@"\b" + keyword + @"\b"),
-                    "Year-1 writer must not emit " + keyword + " for " + wkt);
+                    "The Year-1 writer must not emit " + keyword + " for " + wkt);
             }
         }
     }

@@ -1103,12 +1103,13 @@ namespace NetTopologySuite.IO
         }
 
         /// <summary>
-        /// Converts a Year-1 curve member (ISO/IEC 13249-3 §5.1.67 g4
-        /// <c>curveMember</c>) to Text format: a <c>CURVEPOLYGON</c> ring or
-        /// a <c>MULTICURVE</c> member. Year-1 lock: emits only a bare
+        /// Converts a Year-1 curve member to Text format, then appends it to
+        /// the writer: a <c>CURVEPOLYGON</c> ring or a <c>MULTICURVE</c>
+        /// member. NTS Year-1 scope: emits only a bare
         /// <c>LineString</c> body, tagged <c>CIRCULARSTRING</c>, or tagged
-        /// <c>COMPOUNDCURVE</c>. Year-2 keywords (CIRCLE, GEODESIC, ELLIPSE,
-        /// NURBS, CLOTHOID, SPIRAL) are never written for Year-1 objects.
+        /// <c>COMPOUNDCURVE</c>. The six ISO/IEC 13249-3 §4.2.1 curve types NTS
+        /// has no carrier for (CIRCLE, GEODESICSTRING, ELLIPTICALCURVE,
+        /// NURBSCURVE, CLOTHOID, SPIRALCURVE) have no value to write.
         /// </summary>
         /// <param name="member">The ring or MultiCurve member to process.</param>
         /// <param name="outputOrdinates">A bit-pattern of ordinates to write.</param>
@@ -1134,7 +1135,7 @@ namespace NetTopologySuite.IO
                     if (!(member is LineString lineString))
                     {
                         throw new ArgumentException(
-                            "Year-1 WKT writer emits only LineString, CircularString or CompoundCurve members, got "
+                            "The NTS Year-1 WKT writer emits only LineString, CircularString or CompoundCurve members, got "
                             + member.GetType().Name + ".");
                     }
                     AppendSequenceText(lineString.CoordinateSequence, outputOrdinates, useFormatting, level, false, writer, ordinateFormat);

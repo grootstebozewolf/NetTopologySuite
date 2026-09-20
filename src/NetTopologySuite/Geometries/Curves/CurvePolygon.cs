@@ -8,8 +8,9 @@
 //   Assisted-by: Claude (Fable 5); Ticket 3 typed-members: Cursor Grok 4.6
 //
 // Status: PRODUCTION (structure + Year-1 WKT + WKB type 10 + §8.2 typed members).
-// Year-1 WKB 10 is complete (Tickets 1–3; no longer partial). Year-2 ring names
-// (CIRCLE, GEODESIC, ELLIPSE, NURBS, CLOTHOID, SPIRAL) remain omitted.
+// Year-1 WKB 10 is complete (Tickets 1–3; no longer partial). The six ISO
+// §5.1.67 curve names NTS has no carrier for (CIRCLE, GEODESICSTRING,
+// ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE) remain omitted.
 // Rings are Curve, never collapsed to LinearRing (F-CP). Area and Length
 // (perimeter) are closed-form over the structural rings (JTS 9808dfa1 port);
 // Linearize(tolerance) densifies by sagitta, keeping every control as an
@@ -39,9 +40,10 @@ namespace NetTopologySuite.Geometries.Curves
     /// collapse a curved ring to a flat <see cref="LinearRing"/> (the F-CP
     /// structural contract; ISO/IEC 13249-3 §8.2 <c>ST_ExteriorRing</c> /
     /// <c>ST_NumInteriorRing</c> / <c>ST_InteriorRingN</c>).
-    /// Year-1 WKT and WKB type 10 are complete. Year-2 ring names
-    /// (<c>CIRCLE</c>, <c>GEODESIC</c>, <c>ELLIPSE</c>, <c>NURBS</c>,
-    /// <c>CLOTHOID</c>, <c>SPIRAL</c>) remain omitted.
+    /// Year-1 WKT and WKB type 10 are complete. The six ISO/IEC 13249-3
+    /// §5.1.67 curve names NTS has no carrier for (<c>CIRCLE</c>,
+    /// <c>GEODESICSTRING</c>, <c>ELLIPTICALCURVE</c>, <c>NURBSCURVE</c>,
+    /// <c>CLOTHOID</c>, <c>SPIRALCURVE</c>) remain omitted.
     /// <para/>
     /// <see cref="Area"/> and <see cref="Length"/> (perimeter) are closed-form over
     /// the structural rings, and <see cref="Linearize(double)"/> densifies by
@@ -75,9 +77,9 @@ namespace NetTopologySuite.Geometries.Curves
         /// <param name="holes">The interior rings, closed <c>Curve</c>s</param>
         /// <param name="factory">The geometry factory</param>
         /// <exception cref="ArgumentException">
-        /// If a ring is not a Year-1 type (LineString, CircularString, or
-        /// CompoundCurve with LineString|CircularString members), a ring is not
-        /// closed, a hole is <c>null</c>, or the shell is empty while holes are not.
+        /// If a ring is not an NTS Year-1 ring type (LineString, CircularString, or
+        /// CompoundCurve), a ring is not closed, a hole is <c>null</c>, or the shell
+        /// is empty while holes are not.
         /// </exception>
         public CurvePolygon(Curve shell, Curve[] holes, GeometryFactory factory) : base(factory)
         {
@@ -112,12 +114,11 @@ namespace NetTopologySuite.Geometries.Curves
                 // empty -- holes without a shell are unrepresentable in that scheme.
                 throw new ArgumentException("shell is empty but holes are not", nameof(holes));
             }
-            // Year-1 ST_CurvePolygon ring grammar (ISO/IEC 13249-3 §8.2):
-            // rings are LineString | CircularString | CompoundCurve (the last
-            // with contiguous LS|CS members only). Unclosed rings bound
-            // nothing (closed half of §8.2.1 Desc 2-3). The simplicity half
-            // of "ring", and every further ISO "shall", belongs to arc-aware
-            // ST_IsValid (tickets 615-g/h).
+            // §8.2.1 Desc 2-3 types a ring as any ST_Curve, so the narrowing to
+            // LineString | CircularString | CompoundCurve is NTS Year-1 scope,
+            // not an ISO rule. Unclosed rings bound nothing (the closed half of
+            // Desc 2-3). The simplicity half of "ring", and every further ISO
+            // "shall", belongs to arc-aware ST_IsValid (tickets 615-g/h).
             ValidateYear1Ring(shell, nameof(shell));
             foreach (var hole in holes)
             {
@@ -150,12 +151,21 @@ namespace NetTopologySuite.Geometries.Curves
         }
 
         /// <summary>
-        /// Year-1 <c>ST_CurvePolygon</c> ring types (ISO/IEC 13249-3 §8.2):
-        /// <see cref="LineString"/> (including <see cref="LinearRing"/>),
-        /// <see cref="CircularString"/>, or <see cref="CompoundCurve"/> whose
-        /// members are <see cref="LineString"/> | <see cref="CircularString"/>
-        /// only. Nested <see cref="CompoundCurve"/> members are rejected.
+        /// NTS Year-1 ring types: <see cref="LineString"/> (including
+        /// <see cref="LinearRing"/>), <see cref="CircularString"/>, or
+        /// <see cref="CompoundCurve"/> with <see cref="LineString"/> |
+        /// <see cref="CircularString"/> members. ISO/IEC 13249-3 §8.2.1 Desc 2-3
+        /// types a ring as any <c>ST_Curve</c>, so this is a scope check, not a
+        /// conformance one.
         /// </summary>
+        /// <remarks>
+        /// Nesting is NOT checked here and cannot be: <see cref="CompoundCurve"/>
+        /// splices a nested component flat in its own constructor (depth-1, by
+        /// construction), so <see cref="CompoundCurve.Curves"/> never holds one.
+        /// A nested <c>COMPOUNDCURVE</c> ring is therefore refused on the WKT read
+        /// path only (<c>WKTReader.ReadCompoundCurveText</c>); built through this
+        /// constructor the same shape is accepted, already flattened.
+        /// </remarks>
         /// <param name="ring">The ring to check.</param>
         /// <param name="paramName">The constructor parameter name for exceptions.</param>
         /// <exception cref="ArgumentException">When the ring is not a Year-1 ring type.</exception>
@@ -169,23 +179,17 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 foreach (var member in compound.Curves)
                 {
-                    if (member is CompoundCurve)
-                    {
-                        throw new ArgumentException(
-                            "A Year-1 CompoundCurve ring must not contain nested CompoundCurve members " +
-                            "(contiguous LineString | CircularString only).", paramName);
-                    }
                     if (!(member is LineString || member is CircularString))
                     {
                         throw new ArgumentException(
-                            "A Year-1 CompoundCurve ring admits only LineString and CircularString members, got "
+                            "An NTS Year-1 CompoundCurve ring admits only LineString and CircularString members, got "
                             + member.GetType().Name + ".", paramName);
                     }
                 }
                 return;
             }
             throw new ArgumentException(
-                "A Year-1 CurvePolygon ring must be a LineString, CircularString or CompoundCurve, got "
+                "An NTS Year-1 CurvePolygon ring must be a LineString, CircularString or CompoundCurve, got "
                 + ring.GetType().Name + ".", paramName);
         }
 
