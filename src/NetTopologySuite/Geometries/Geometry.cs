@@ -155,7 +155,9 @@ namespace NetTopologySuite.Geometries
             /// <summary>Sort hierarchy value of a <see cref="Curves.Triangle"/></summary>
             Triangle = 13,
             /// <summary>Sort hierarchy value of a <see cref="Curves.Tin"/></summary>
-            Tin = 14
+            Tin = 14,
+            /// <summary>Sort hierarchy value of a <see cref="Curves.Circle"/></summary>
+            Circle = 15
         }
 
         /// <summary>
@@ -200,6 +202,8 @@ namespace NetTopologySuite.Geometries
         public const string TypeNameMultiCurve = "MultiCurve";
         /// <summary>The name of multi-surface geometries (SQL/MM / GEOS).</summary>
         public const string TypeNameMultiSurface = "MultiSurface";
+        /// <summary>The name of circle geometries (ISO/IEC 13249-3 ST_Circle).</summary>
+        public const string TypeNameCircle = "Circle";
 
         //FObermaier: not *readonly* due to SRID property in geometryfactory
         private /*readonly*/ GeometryFactory _factory;

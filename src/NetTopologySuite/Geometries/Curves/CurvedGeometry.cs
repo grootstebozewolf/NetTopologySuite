@@ -12,13 +12,14 @@ namespace NetTopologySuite.Geometries.Curves
     internal static class CurvedGeometry
     {
         /// <summary>
-        /// True for the five SQL/MM curve types. Excludes
+        /// True for the SQL/MM curve types. Excludes
         /// <see cref="LineString"/>, <see cref="LinearRing"/>, <see cref="Polygon"/>,
         /// and <see cref="Triangle"/>.
         /// </summary>
         public static bool IsCurvedType(Geometry g)
         {
             return g is CircularString
+                || g is Circle
                 || g is CompoundCurve
                 || g is CurvePolygon
                 || g is MultiCurve

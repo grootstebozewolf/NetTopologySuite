@@ -767,6 +767,8 @@ namespace NetTopologySuite.IO
                 returned = ReadGeometryCollectionText(tokens, factory, ordinateFlags);
             else if (IsTypeName(tokens, type, WKTConstants.CIRCULARSTRING))
                 returned = ReadCircularStringText(tokens, factory, ordinateFlags);
+            else if (IsTypeName(tokens, type, WKTConstants.CIRCLE))
+                returned = ReadCircleText(tokens, factory, ordinateFlags);
             else if (IsTypeName(tokens, type, WKTConstants.COMPOUNDCURVE))
                 returned = ReadCompoundCurveText(tokens, factory, ordinateFlags);
             else if (IsTypeName(tokens, type, WKTConstants.CURVEPOLYGON))
@@ -832,14 +834,14 @@ namespace NetTopologySuite.IO
         /// <summary>
         /// Instantiable ST_Curve subtypes in ISO/IEC 13249-3 §4.2.1 that NTS
         /// does not yet carry. Not optional extras. Do not call them unknown.
-        /// The keywords are the §5.1.67 spellings — CIRCLE, GEODESICSTRING,
+        /// The keywords are the §5.1.67 spellings — GEODESICSTRING,
         /// ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE — never a
-        /// shortened form.
+        /// shortened form. CIRCLE is Year-1 (Ticket 19) and is dispatched
+        /// before this predicate.
         /// </summary>
         private static bool IsUnimplementedSqlMmCurve(string type)
         {
             return HasTypeNameWithDimSuffix(type, WKTConstants.CLOTHOID)
-                || HasTypeNameWithDimSuffix(type, WKTConstants.CIRCLE)
                 || HasTypeNameWithDimSuffix(type, WKTConstants.GEODESICSTRING)
                 || HasTypeNameWithDimSuffix(type, WKTConstants.ELLIPTICALCURVE)
                 || HasTypeNameWithDimSuffix(type, WKTConstants.NURBSCURVE)
@@ -1092,9 +1094,20 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         }
 
         /// <summary>
+        /// Creates a <c>Circle</c> using the next token in the stream.
+        /// Year-1 WKT: <c>CIRCLE [Z|M|ZM] ( point , point , point ) | EMPTY</c>
+        /// (ISO/IEC 13249-3 §4.2.7 / §5.1.67).
+        /// </summary>
+        private Geometries.Curves.Circle ReadCircleText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags)
+        {
+            var sequence = GetCoordinateSequence(factory, tokens, ordinateFlags, 0, false);
+            return new Geometries.Curves.Circle(sequence, factory);
+        }
+
+        /// <summary>
         /// Creates a <c>Curve</c> using the next token in the stream: a bare
-        /// coordinate list (a <c>LineString</c>), a tagged <c>CIRCULARSTRING</c>, or a
-        /// tagged <c>COMPOUNDCURVE</c>.
+        /// coordinate list (a <c>LineString</c>), a tagged <c>CIRCULARSTRING</c>,
+        /// a tagged <c>CIRCLE</c>, or a tagged <c>COMPOUNDCURVE</c>.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -1102,7 +1115,8 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         /// <c>&lt;ring text&gt;</c> the same NINE alternatives:
         /// <c>&lt;linestring text body&gt;</c> plus the circularstring, circle,
         /// geodesic, elliptical, nurbs, clothoid, spiral and compoundcurve text
-        /// representations. NTS Year-1 carries three of them. The other six are
+        /// representations. NTS Year-1 carries four of them (line, circular
+        /// string, circle, compound). The other five are
         /// instantiable ISO types NTS has no carrier for
         /// (<see cref="IsUnimplementedSqlMmCurve"/>): they are named and refused,
         /// never flattened. That is an NTS scope limit, not an ISO one.
@@ -1165,6 +1179,16 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
                 return new Geometries.Curves.CircularString(sequence, factory);
             }
 
+            // HasTypeNameWithDimSuffix, not StartsWith: CIRCULARSTRING starts
+            // with CIRCLE. CIRCULARSTRING is already consumed above.
+            if (HasTypeNameWithDimSuffix(current, WKTConstants.CIRCLE))
+            {
+                GetNextWord(tokens);
+                CheckCurveComponentZm(GetComponentOrdinateFlags(tokens, current, WKTConstants.CIRCLE), ordinateFlags, WKTConstants.CIRCLE);
+                var sequence = GetCurveComponentSequence(factory, tokens, ordinateFlags, 0);
+                return new Geometries.Curves.Circle(sequence, factory);
+            }
+
             if (current.StartsWith(WKTConstants.COMPOUNDCURVE, StringComparison.OrdinalIgnoreCase))
             {
                 GetNextWord(tokens);
@@ -1178,9 +1202,9 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
             if (year1MemberLock)
             {
                 throw new ParseException(
-                    "Unexpected Year-1 curve member token '" + current + "': NTS Year-1 carries three of the nine " +
-                    "ISO/IEC 13249-3 §5.1.67 alternatives -- lineStringText, circularStringGeometry " +
-                    "and compoundCurveGeometry.");
+                    "Unexpected Year-1 curve member token '" + current + "': NTS Year-1 carries four of the nine " +
+                    "ISO/IEC 13249-3 §5.1.67 alternatives -- lineStringText, circularStringGeometry, " +
+                    "circleGeometry and compoundCurveGeometry.");
             }
 
             throw new ParseException("Unexpected token: " + current);
@@ -1277,9 +1301,10 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         /// <summary>
         /// Creates a <c>MultiCurve</c> (GEOS / SQL/MM) using the next token in the stream.
         /// NTS Year-1 member production (reused from Ticket 1 <see cref="ReadCurveText"/>):
-        /// three of the nine ISO/IEC 13249-3 §5.1.67 alternatives —
+        /// four of the nine ISO/IEC 13249-3 §5.1.67 alternatives —
         /// <c>lineStringText</c> | <c>circularStringGeometry</c> |
-        /// <c>compoundCurveGeometry</c>. The narrowing is NTS scope, not ISO.
+        /// <c>circleGeometry</c> | <c>compoundCurveGeometry</c>.
+        /// The narrowing is NTS scope, not ISO.
         /// </summary>
         private Geometries.Curves.MultiCurve ReadMultiCurveText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags)
         {
@@ -1305,8 +1330,9 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         /// <see cref="ReadCurvePolygonText"/>, so their rings obey the Year-1
         /// LS|CS|CC lock (including the 615-i tagged-<c>LINESTRING</c> interop
         /// ring and the reader-only nested-<c>COMPOUNDCURVE</c> refusal).
-        /// The six ISO/IEC 13249-3 §5.1.67 curve names NTS has no carrier for
-        /// are named via <see cref="IsUnimplementedSqlMmCurve"/>; TRIANGLE, TIN,
+        /// The five ISO/IEC 13249-3 §5.1.67 curve names NTS has no carrier for
+        /// are named via <see cref="IsUnimplementedSqlMmCurve"/>; CIRCLE is a
+        /// Year-1 curve, not a MultiSurface member. TRIANGLE, TIN,
         /// POLYHEDRALSURFACE and COMPOUNDSURFACE are not Year-1 members.
         /// The narrowing is NTS scope, not ISO.
         /// </summary>
@@ -1401,6 +1427,14 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
                         "ring or MultiCurve member is contiguous LineString | CircularString members. " +
                         "ISO/IEC 13249-3 §5.1.67 admits the nesting; NTS Year-1 refuses it rather than flattening it away.");
                 }
+                if (year1Members && HasTypeNameWithDimSuffix(LookAheadWord(tokens), WKTConstants.CIRCLE))
+                {
+                    // CIRCLE is Year-1 as a MultiCurve member / CurvePolygon ring,
+                    // not as a CompoundCurve component (those stay LS|CS).
+                    throw new ParseException(
+                        "CIRCLE is not a Year-1 CompoundCurve member: a Year-1 CompoundCurve " +
+                        "ring or MultiCurve member is contiguous LineString | CircularString members.");
+                }
                 var curve = ReadCurveText(tokens, factory, ordinateFlags);
                 curves.Add(curve);
                 nextToken = GetNextCloserOrComma(tokens);
@@ -1412,9 +1446,10 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
 
         /// <summary>
         /// Creates a <c>CurvePolygon</c> using the next token in the stream.
-        /// NTS Year-1 reads three of the nine ISO/IEC 13249-3 §5.1.67
+        /// NTS Year-1 reads four of the nine ISO/IEC 13249-3 §5.1.67
         /// <c>&lt;ring text&gt;</c> alternatives: <c>&lt;linestring text body&gt;</c>,
-        /// <c>&lt;circularstring text representation&gt;</c> and
+        /// <c>&lt;circularstring text representation&gt;</c>,
+        /// <c>&lt;circle text representation&gt;</c> and
         /// <c>&lt;compoundcurve text representation&gt;</c>. §8.2.1 Desc 2-3 types a
         /// ring as any <c>ST_Curve</c>; the narrowing is NTS scope, not ISO.
         /// </summary>
@@ -1468,7 +1503,7 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
                     continue;
                 throw new ParseException(
                     keyword + " is not a Year-1 collection keyword. SQL/MM ST_MultiCurve is MULTICURVE " +
-                    "with LineString | CircularString | CompoundCurve members (ISO/IEC 13249-3). " +
+                    "with LineString | CircularString | Circle | CompoundCurve members (ISO/IEC 13249-3). " +
                     "MULTICIRCULARSTRING / MULTICOMPOUNDCURVE are rejected on read.");
             }
         }

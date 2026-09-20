@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Status: PRODUCTION (structure + Year-1 WKT + WKB type 12 + §4.2.27 typed members).
-// Year-1 WKB 12 is complete (Tickets 7–9; no longer partial). The six ISO
-// §5.1.67 curve names NTS has no carrier for (CIRCLE, GEODESICSTRING,
+// Year-1 WKB 12 is complete (Tickets 7–9; no longer partial). The five ISO
+// §5.1.67 curve names NTS has no carrier for (GEODESICSTRING,
 // ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE) remain omitted, as do
 // Year-2 surface types (COMPOUNDSURFACE, POLYHEDRALSURFACE, TRIANGLE, TIN).
 // Members are ISurface (Polygon | CurvePolygon), never collapsed to a bare

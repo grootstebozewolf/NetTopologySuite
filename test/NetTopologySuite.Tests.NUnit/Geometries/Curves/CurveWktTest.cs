@@ -21,6 +21,8 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         [TestCase("CIRCULARSTRING (0 0, 1 1, 2 0)", typeof(CircularString))]
         [TestCase("CIRCULARSTRING (0 0, 1 1, 2 0, 3 -1, 4 0)", typeof(CircularString))]
         [TestCase("CIRCULARSTRING EMPTY", typeof(CircularString))]
+        [TestCase("CIRCLE (1 0, 0 1, -1 0)", typeof(Circle))]
+        [TestCase("CIRCLE EMPTY", typeof(Circle))]
         [TestCase("COMPOUNDCURVE ((0 0, 1 0), CIRCULARSTRING (1 0, 2 1, 3 0), (3 0, 4 0))", typeof(CompoundCurve))]
         [TestCase("COMPOUNDCURVE (CIRCULARSTRING (0 0, 1 1, 2 0), (2 0, 3 0))", typeof(CompoundCurve))]
         [TestCase("COMPOUNDCURVE EMPTY", typeof(CompoundCurve))]

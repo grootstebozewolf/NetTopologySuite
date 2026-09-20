@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Status: PRODUCTION (structure + Year-1 WKT + WKB type 11 + §4.2.25 typed members).
-// Year-1 WKB 11 is complete (Tickets 4–6; no longer partial). The six ISO
-// §5.1.67 curve names NTS has no carrier for (CIRCLE, GEODESICSTRING,
-// ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE) remain omitted.
+// Year-1 WKB 11 is complete (Tickets 4–6; no longer partial). CIRCLE is a
+// Year-1 curve member (Ticket 19, WKT). The five ISO §5.1.67 curve names
+// NTS has no carrier for (GEODESICSTRING, ELLIPTICALCURVE, NURBSCURVE,
+// CLOTHOID, SPIRALCURVE) remain omitted.
 // Members are Curve (LS|CS|CC), never collapsed to LineString (F-MC / §4.2.25).
 // IsSimple and IsValid are arc-aware (ISO/IEC 13249-3 §10.3.1 Desc 4 /
 // §10.1.1 Desc 10; NetTopologySuite.Proofs #615 ticket 615-h rung 4, #639),
@@ -19,17 +20,20 @@ namespace NetTopologySuite.Geometries.Curves
 {
     /// <summary>
     /// A SQL/MM <c>MultiCurve</c>: a collection of <see cref="Curve"/>s
-    /// (<see cref="LineString"/>, <see cref="CircularString"/>, <see cref="CompoundCurve"/>).
+    /// (<see cref="LineString"/>, <see cref="CircularString"/>,
+    /// <see cref="Circle"/>, <see cref="CompoundCurve"/>).
     /// Matches GEOS <c>geom::MultiCurve</c> / ISO WKB type 11.
     /// </summary>
     /// <remarks>
     /// <see cref="GetGeometryN"/> and enumeration expose <see cref="Curve"/>
-    /// and never collapse a <see cref="CircularString"/> or
+    /// and never collapse a <see cref="CircularString"/>,
+    /// <see cref="Circle"/> or
     /// <see cref="CompoundCurve"/> to a flat <see cref="LineString"/> (the
     /// F-MC structural contract; ISO/IEC 13249-3 §4.2.25 <c>ST_GeometryN</c> /
     /// <c>ST_NumGeometries</c>). Year-1 WKT and WKB type 11 are complete.
-    /// The six ISO/IEC 13249-3 §5.1.67 curve names NTS has no carrier for
-    /// (<c>CIRCLE</c>, <c>GEODESICSTRING</c>, <c>ELLIPTICALCURVE</c>,
+    /// <see cref="Circle"/> is a Year-1 member (Ticket 19, WKT). The five
+    /// ISO/IEC 13249-3 §5.1.67 curve names NTS has no carrier for
+    /// (<c>GEODESICSTRING</c>, <c>ELLIPTICALCURVE</c>,
     /// <c>NURBSCURVE</c>, <c>CLOTHOID</c>, <c>SPIRALCURVE</c>) remain omitted.
     /// <para/>
     /// The remaining analytic ops fail closed with
@@ -47,7 +51,8 @@ namespace NetTopologySuite.Geometries.Curves
         /// <param name="curves">
         /// Member geometries, or <c>null</c>/empty for an empty multi-curve.
         /// Each non-empty member must be a Year-1 curve
-        /// (<see cref="LineString"/>, <see cref="CircularString"/>, or
+        /// (<see cref="LineString"/>, <see cref="CircularString"/>,
+        /// <see cref="Circle"/>, or
         /// <see cref="CompoundCurve"/> with LineString|CircularString members).
         /// </param>
         /// <param name="factory">Geometry factory</param>
@@ -71,7 +76,7 @@ namespace NetTopologySuite.Geometries.Curves
                 if (!(curves[i] is Curve curve))
                 {
                     throw new ArgumentException(
-                        "MultiCurve members must be curves (LineString, CircularString or CompoundCurve), got "
+                        "MultiCurve members must be curves (LineString, CircularString, Circle or CompoundCurve), got "
                         + curves[i].GetType().Name + ".", nameof(curves));
                 }
                 ValidateYear1Member(curve, nameof(curves));
@@ -81,9 +86,9 @@ namespace NetTopologySuite.Geometries.Curves
 
         /// <summary>
         /// Year-1 <c>ST_MultiCurve</c> member types (ISO/IEC 13249-3 §4.2.25 /
-        /// §5.1.67 g4 <c>curveMember</c>, Ticket 4): <see cref="LineString"/>
+        /// §5.1.67 g4 <c>curveMember</c>, Tickets 4 / 19): <see cref="LineString"/>
         /// (including <see cref="LinearRing"/>), <see cref="CircularString"/>,
-        /// or <see cref="CompoundCurve"/> whose members are
+        /// <see cref="Circle"/>, or <see cref="CompoundCurve"/> whose members are
         /// <see cref="LineString"/> | <see cref="CircularString"/> only.
         /// Nested <see cref="CompoundCurve"/> members are rejected.
         /// </summary>
@@ -94,7 +99,7 @@ namespace NetTopologySuite.Geometries.Curves
         {
             if (member == null || member.IsEmpty)
                 return;
-            if (member is LineString || member is CircularString)
+            if (member is LineString || member is CircularString || member is Circle)
                 return;
             if (member is CompoundCurve compound)
             {
@@ -116,7 +121,7 @@ namespace NetTopologySuite.Geometries.Curves
                 return;
             }
             throw new ArgumentException(
-                "A Year-1 MultiCurve member must be a LineString, CircularString or CompoundCurve, got "
+                "A Year-1 MultiCurve member must be a LineString, CircularString, Circle or CompoundCurve, got "
                 + member.GetType().Name + ".", paramName);
         }
 
