@@ -4,6 +4,7 @@
 // Ticket 2 — Year-1 ST_CurvePolygon WKB type 10 read/write (ISO/IEC 13249-3).
 // Rings: nested WKB LineString (2) | CircularString (8) | CompoundCurve (9).
 // Reuses Ticket 1 Year-1 ring validation; does not remint WKT grammar.
+// Ticket 3: Year-1 WKB 10 is complete (no longer "partial"); Year-2 ring names stay omitted.
 
 using System;
 using NetTopologySuite.Geometries;
