@@ -877,15 +877,18 @@ namespace NetTopologySuite.IO
 
         /// <summary>
         /// Reads a SQL/MM TIN (ISO/IEC 13249-3 / OGC SFA-CA type 16).
-        /// Year-1 members are nested WKB Polygon (3) only (ISO/IEC 13249-3
-        /// g4 <c>polygonText</c>, Ticket 16 WKT lock). Each Polygon is
-        /// wrapped as the existing <see cref="Geometries.Curves.Triangle"/>
-        /// (no second Triangle type). Nested Triangle (17),
-        /// PolyhedralSurface (15), type 18 and any other non-3 code are
-        /// refused by numeric type — WKB has no keyword list. EMPTY is a
-        /// type-16 header with zero patches. Z/M/ZM use the same ISO
-        /// +1000/+2000/+3000 table as types 8–12 (recovered as type 16 by
-        /// the <c>(type &amp; 0xffff) % 1000</c> reducer only).
+        /// Year-1 WKB 16 is complete (Tickets 16–18; no longer partial);
+        /// named WKT fields (<c>PATCHES</c> / <c>ELEMENTS</c> /
+        /// <c>MAXSIDELENGTH</c>) remain omitted. Year-1 members are nested
+        /// WKB Polygon (3) only (ISO/IEC 13249-3 g4 <c>polygonText</c>,
+        /// Ticket 16 WKT lock). Each Polygon is wrapped as the existing
+        /// <see cref="Geometries.Curves.Triangle"/> (no second Triangle
+        /// type). Nested Triangle (17), PolyhedralSurface (15), type 18
+        /// and any other non-3 code are refused by numeric type — WKB has
+        /// no keyword list. EMPTY is a type-16 header with zero patches.
+        /// Z/M/ZM use the same ISO +1000/+2000/+3000 table as types 8–12
+        /// (recovered as type 16 by the <c>(type &amp; 0xffff) % 1000</c>
+        /// reducer only).
         /// </summary>
         /// <param name="reader">The reader</param>
         /// <param name="cs">The coordinate system</param>

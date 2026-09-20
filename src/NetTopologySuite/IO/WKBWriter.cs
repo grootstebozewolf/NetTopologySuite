@@ -1034,8 +1034,10 @@ namespace NetTopologySuite.IO
 
         /// <summary>
         /// Write a TIN in its WKB format (ISO/IEC 13249-3 / OGC SFA-CA type 16).
-        /// Each member is nested WKB Polygon (3) only — the Year-1 g4
-        /// <c>polygonText</c> grammar from Ticket 16. The object-model
+        /// Year-1 WKB 16 is complete (Tickets 16–18; no longer partial);
+        /// named WKT fields remain omitted. Each member is nested WKB
+        /// Polygon (3) only — the Year-1 g4 <c>polygonText</c> grammar from
+        /// Ticket 16. The object-model
         /// <see cref="Geometries.Curves.Triangle"/> is emitted as type 3,
         /// never type 17. EMPTY is a type-16 header with zero patches.
         /// Z/M/ZM use the same ISO +1000/+2000/+3000 table as types 8–12
