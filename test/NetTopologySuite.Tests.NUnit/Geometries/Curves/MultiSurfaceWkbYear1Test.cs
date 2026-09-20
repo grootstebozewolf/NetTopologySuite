@@ -158,7 +158,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(ReadUInt32Le(written, 5), Is.EqualTo(2u), "two members");
             Assert.That(written[9], Is.EqualTo(1));
             Assert.That(ReadTypeLe(written, 10), Is.EqualTo(10u), "CurvePolygon member");
-            Assert.That(ReadTypeLe(written, 20), Is.EqualTo(8u), "CS shell via type 10");
+            Assert.That(ReadTypeLe(written, 19), Is.EqualTo(8u), "CS shell via type 10");
             int polyOffset = 9 + 5 + 4 + 5 + 4 + 5 * 16;
             Assert.That(written[polyOffset], Is.EqualTo(1));
             Assert.That(ReadTypeLe(written, polyOffset + 1), Is.EqualTo(3u), "Polygon member");
@@ -194,7 +194,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(WKBWriter.ToHex(written), Is.EqualTo(HexCpOnly));
             Assert.That(ReadTypeLe(written, 1), Is.EqualTo(12u));
             Assert.That(ReadTypeLe(written, 10), Is.EqualTo(10u), "CurvePolygon member");
-            Assert.That(ReadTypeLe(written, 20), Is.EqualTo(8u), "CS ring via type 10");
+            Assert.That(ReadTypeLe(written, 19), Is.EqualTo(8u), "CS ring via type 10");
 
             var fromHex = (MultiSurface)_wkbReader.Read(WKBReader.HexToBytes(HexCpOnly));
             Assert.That(fromHex.GetGeometryN(0), Is.InstanceOf<CurvePolygon>());
@@ -211,10 +211,10 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
 
             Assert.That(ReadTypeLe(written, 1), Is.EqualTo(12u));
             Assert.That(ReadTypeLe(written, 10), Is.EqualTo(10u), "CurvePolygon member");
-            Assert.That(ReadTypeLe(written, 20), Is.EqualTo(9u), "CC shell via type 10");
-            Assert.That(ReadUInt32Le(written, 24), Is.EqualTo(2u), "two CC members");
-            Assert.That(ReadTypeLe(written, 29), Is.EqualTo(8u), "CS component");
-            int lsMemberOffset = 28 + 5 + 4 + 3 * 16;
+            Assert.That(ReadTypeLe(written, 19), Is.EqualTo(9u), "CC shell via type 10");
+            Assert.That(ReadUInt32Le(written, 23), Is.EqualTo(2u), "two CC members");
+            Assert.That(ReadTypeLe(written, 28), Is.EqualTo(8u), "CS component");
+            int lsMemberOffset = 27 + 5 + 4 + 3 * 16;
             Assert.That(ReadTypeLe(written, lsMemberOffset + 1), Is.EqualTo(2u), "LS component");
 
             var fromHex = (MultiSurface)_wkbReader.Read(WKBReader.HexToBytes(HexCcShell));
