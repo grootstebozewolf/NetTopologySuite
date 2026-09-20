@@ -1022,7 +1022,8 @@ namespace NetTopologySuite.IO
         /// <summary>
         /// Converts a <c>Circle</c> to Circle Tagged Text format, then appends
         /// it to the writer. The keyword is always <c>CIRCLE</c> — never
-        /// demoted to <c>CIRCULARSTRING</c>.
+        /// demoted to <c>CIRCULARSTRING</c>. Year-1 CIRCLE WKT + WKB 18 is
+        /// complete (Tickets 19–21; no longer partial).
         /// </summary>
         /// <param name="circle">The <c>Circle</c> to process.</param>
         /// <param name="outputOrdinates">A bit-pattern of ordinates to write.</param>

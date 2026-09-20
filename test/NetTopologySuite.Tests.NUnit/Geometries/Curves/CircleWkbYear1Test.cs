@@ -8,7 +8,8 @@
 // Nested Circle in MultiCurve / CurvePolygon mirrors Ticket 19 object-model
 // acceptance. MultiSurface still refuses Circle as a surface member; TIN
 // members stay Polygon (3) only. Does not remint Ticket 19 WKT. No Exact*,
-// OverlayNGCurve, or Ticket 21 typed-members rewrite.
+// OverlayNGCurve. Typed members are Ticket 21 (CircleMembersYear1Test).
+// Year-1 CIRCLE I/O is complete (Tickets 19–21; no longer partial).
 // GEODESICSTRING / ELLIPTICALCURVE / NURBSCURVE / CLOTHOID / SPIRALCURVE
 // stay refused.
 

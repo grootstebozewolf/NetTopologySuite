@@ -94,8 +94,9 @@ namespace NetTopologySuite.Geometries
 
         /// <summary>
         /// Circle (ISO/IEC 13249-3 <c>ST_Circle</c>). The value is the SQL/MM
-        /// WKB type number 18. Year-1 WKT is Ticket 19; Year-1 WKB 18
-        /// read/write is Ticket 20 (reducer-only Z/M/ZM: 1018 / 2018 / 3018).
+        /// WKB type number 18. Year-1 WKT, WKB 18, and typed members are
+        /// complete (Tickets 19–21; no longer partial). Reducer-only Z/M/ZM:
+        /// 1018 / 2018 / 3018.
         /// </summary>
         Circle = 18,
 
