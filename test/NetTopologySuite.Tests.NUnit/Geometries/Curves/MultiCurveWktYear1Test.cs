@@ -4,7 +4,8 @@
 // Ticket 4 — Year-1 ST_MultiCurve WKT member grammar (ISO/IEC 13249-3).
 // Members: LineString (bare) | CircularString | CompoundCurve. Reuses Ticket 1
 // g4 curveMember / ReadCurveText. Year-2 keywords and MULTICIRCULARSTRING /
-// MULTICOMPOUNDCURVE reject on read. WKB type 11 is Ticket 5.
+// MULTICOMPOUNDCURVE reject on read. Ticket 6: Year-1 WKB 11 is complete
+// (no longer "partial"); Year-2 member names stay omitted. Does not remint WKT.
 
 using System;
 using NetTopologySuite.Geometries;

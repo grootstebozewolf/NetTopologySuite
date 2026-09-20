@@ -4,7 +4,7 @@
 // Ticket 5 — Year-1 ST_MultiCurve WKB type 11 read/write (ISO/IEC 13249-3).
 // Members: nested WKB LineString (2) | CircularString (8) | CompoundCurve (9).
 // Reuses Ticket 4 Year-1 member lock; does not remint WKT grammar.
-// Ticket 6 typed-members are out of scope beyond WKB round-trip needs.
+// Ticket 6: Year-1 WKB 11 is complete (no longer "partial"); Year-2 member names stay omitted.
 
 using System;
 using NetTopologySuite.Geometries;
