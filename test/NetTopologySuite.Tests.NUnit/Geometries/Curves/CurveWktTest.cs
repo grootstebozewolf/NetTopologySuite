@@ -111,15 +111,15 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void ReadFlattensNestedCompoundCurveInsideCurvePolygonRing()
+        public void ReadRejectsNestedCompoundCurveInsideCurvePolygonRing()
         {
-            // §5.1.67 <ring text> has the same alternatives as <curve text>,
-            // nested COMPOUNDCURVE included.
-            var cp = (CurvePolygon)new WKTReader().Read(
-                "CURVEPOLYGON (COMPOUNDCURVE ((0 0, 1 0), COMPOUNDCURVE ((1 0, 1 1)), (1 1, 0 0)))");
-            var shell = (CompoundCurve)cp.ExteriorRing;
-            Assert.That(shell.Curves.Count, Is.EqualTo(3));
-            Assert.That(shell.IsClosed, Is.True);
+            // Year-1 ST_CurvePolygon ring grammar (Ticket 1): a CompoundCurve
+            // ring admits contiguous LS|CS members only. Nested COMPOUNDCURVE
+            // is rejected on read, not flattened.
+            var ex = Assert.Throws<ParseException>(() =>
+                new WKTReader().Read(
+                    "CURVEPOLYGON (COMPOUNDCURVE ((0 0, 1 0), COMPOUNDCURVE ((1 0, 1 1)), (1 1, 0 0)))"));
+            Assert.That(ex.Message, Does.Contain("Nested COMPOUNDCURVE"));
         }
 
         [Test]

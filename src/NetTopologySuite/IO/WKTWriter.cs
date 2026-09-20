@@ -1104,7 +1104,10 @@ namespace NetTopologySuite.IO
 
         /// <summary>
         /// Converts a single ring of a <c>CurvePolygon</c> to Text format, then
-        /// appends it to the writer.
+        /// appends it to the writer. Year-1 lock: emits only a bare
+        /// <c>LineString</c> body, tagged <c>CIRCULARSTRING</c>, or tagged
+        /// <c>COMPOUNDCURVE</c>. Year-2 keywords (CIRCLE, GEODESIC, ELLIPSE,
+        /// NURBS, CLOTHOID, SPIRAL) are never written for Year-1 objects.
         /// </summary>
         /// <param name="ring">The ring to process.</param>
         /// <param name="outputOrdinates">A bit-pattern of ordinates to write.</param>
@@ -1127,7 +1130,13 @@ namespace NetTopologySuite.IO
                     break;
 
                 default:
-                    AppendSequenceText(((LineString)ring).CoordinateSequence, outputOrdinates, useFormatting, level, false, writer, ordinateFormat);
+                    if (!(ring is LineString lineString))
+                    {
+                        throw new ArgumentException(
+                            "Year-1 WKT writer emits only LineString, CircularString or CompoundCurve rings, got "
+                            + ring.GetType().Name + ".");
+                    }
+                    AppendSequenceText(lineString.CoordinateSequence, outputOrdinates, useFormatting, level, false, writer, ordinateFormat);
                     break;
             }
         }
