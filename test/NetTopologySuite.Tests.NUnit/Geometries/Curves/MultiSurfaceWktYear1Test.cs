@@ -35,7 +35,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         /// </summary>
         private static readonly string[] UnimplementedSqlMmCurveKeywords =
         {
-            "CIRCLE", "GEODESICSTRING", "ELLIPTICALCURVE", "NURBSCURVE", "CLOTHOID", "SPIRALCURVE"
+            "GEODESICSTRING", "ELLIPTICALCURVE", "NURBSCURVE", "CLOTHOID", "SPIRALCURVE"
         };
 
         /// <summary>
@@ -176,7 +176,6 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(again.Coordinates[again.NumPoints - 1].Z, Is.EqualTo(5));
         }
 
-        [TestCase("CIRCLE", "CIRCLE (0 0, 1 0, 0 1)")]
         [TestCase("GEODESICSTRING", "GEODESICSTRING (0 0, 10 0, 10 10)")]
         [TestCase("ELLIPTICALCURVE", "ELLIPTICALCURVE (0 0, 1, 1, 0, 90)")]
         [TestCase("NURBSCURVE", "NURBSCURVE ((0 0, 10 0, 10 10))")]
@@ -192,7 +191,6 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(ex.Message, Does.Not.Contain("Unknown type"));
         }
 
-        [TestCase("CIRCLE Z (0 0, 1 0, 0 1)")]
         [TestCase("GEODESICSTRINGM (0 0, 1 0, 1 1)")]
         [TestCase("SPIRALCURVEZM ((0 0, 1 0, 1 1))")]
         public void Ticket7_RejectsUnimplementedSqlMmCurveWithOrdinateSuffixAsMember(string memberBody)
@@ -202,7 +200,6 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(ex.Message, Does.Contain("not implemented"));
         }
 
-        [TestCase("CIRCLE", "CIRCLE (0 0, 1 0, 0 1)")]
         [TestCase("GEODESICSTRING", "GEODESICSTRING (0 0, 10 0, 10 10)")]
         [TestCase("ELLIPTICALCURVE", "ELLIPTICALCURVE (0 0, 1, 1, 0, 90)")]
         [TestCase("NURBSCURVE", "NURBSCURVE ((0 0, 10 0, 10 10, 0 10, 0 0))")]

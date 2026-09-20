@@ -47,7 +47,7 @@ namespace NetTopologySuite.Geometries.Curves
         }
 
         private static bool IsServedCurve(Geometry g) =>
-            g is CircularString || g is CompoundCurve;
+            g is CircularString || g is Circle || g is CompoundCurve;
 
         private static double ToCurve(Coordinate c, Geometry curve)
         {
@@ -55,6 +55,8 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 case CircularString cs:
                     return ToCircularString(c, cs);
+                case Circle circle:
+                    return ToCircle(c, circle);
                 case CompoundCurve cc:
                 {
                     double min = double.PositiveInfinity;
@@ -72,6 +74,13 @@ namespace NetTopologySuite.Geometries.Curves
                 default:
                     throw new System.ArgumentException("not a served curve", nameof(curve));
             }
+        }
+
+        private static double ToCircle(Coordinate c, Circle circle)
+        {
+            if (!circle.TryGetCircumcircle(out var centre, out double radius))
+                return 0d;
+            return System.Math.Abs(c.Distance(centre) - radius);
         }
 
         private static double ToCircularString(Coordinate c, CircularString cs)

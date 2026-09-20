@@ -218,6 +218,7 @@ namespace NetTopologySuite.Geometries.Curves
             switch (ring)
             {
                 case CircularString cs: return IsSimple(cs);
+                case Circle circle: return circle.IsSimple;
                 case CompoundCurve cc: return IsSimple(cc);
                 default: return ring.IsSimple; // LineString: classical IsSimpleOp
             }

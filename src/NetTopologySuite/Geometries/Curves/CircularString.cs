@@ -203,7 +203,7 @@ namespace NetTopologySuite.Geometries.Curves
         /// Desc 9–10, is a definition, not a constraint).
         /// <para/>
         /// Note a single closed segment is definitely invalid under Desc 6 —
-        /// whole circles are <c>ST_Circle</c>'s job (§4.2.7, not yet modeled).
+        /// whole circles are <c>ST_Circle</c>'s job (§4.2.7; <see cref="Circle"/>).
         /// Write a full circle as the two-segment five-point form, e.g.
         /// <c>CIRCULARSTRING (0 0, 1 1, 2 0, 1 -1, 0 0)</c>.
         /// </summary>

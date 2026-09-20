@@ -8,9 +8,10 @@
 //   Assisted-by: Claude (Fable 5); Ticket 3 typed-members: Cursor Grok 4.6
 //
 // Status: PRODUCTION (structure + Year-1 WKT + WKB type 10 + §8.2 typed members).
-// Year-1 WKB 10 is complete (Tickets 1–3; no longer partial). The six ISO
-// §5.1.67 curve names NTS has no carrier for (CIRCLE, GEODESICSTRING,
-// ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE) remain omitted.
+// Year-1 WKB 10 is complete (Tickets 1–3; no longer partial). CIRCLE is a
+// Year-1 ring type (Ticket 19, WKT). The five ISO §5.1.67 curve names NTS
+// has no carrier for (GEODESICSTRING, ELLIPTICALCURVE, NURBSCURVE,
+// CLOTHOID, SPIRALCURVE) remain omitted.
 // Rings are Curve, never collapsed to LinearRing (F-CP). Area and Length
 // (perimeter) are closed-form over the structural rings (JTS 9808dfa1 port);
 // Linearize(tolerance) densifies by sagitta, keeping every control as an
@@ -24,6 +25,7 @@
 
 using System;
 using System.Collections.Generic;
+using NetTopologySuite.Algorithm;
 using NetTopologySuite.Algorithm.ExactCurve;
 
 namespace NetTopologySuite.Geometries.Curves
@@ -32,7 +34,8 @@ namespace NetTopologySuite.Geometries.Curves
     /// A SQL/MM Spatial (ISO/IEC 13249-3) <c>CurvePolygon</c>: a planar surface like
     /// <see cref="Polygon"/>, but whose exterior and interior rings are
     /// <see cref="Curve"/>s -- <see cref="LinearRing"/>s, closed
-    /// <see cref="CircularString"/>s or closed <see cref="CompoundCurve"/>s.
+    /// <see cref="CircularString"/>s, <see cref="Circle"/>s or closed
+    /// <see cref="CompoundCurve"/>s.
     /// </summary>
     /// <remarks>
     /// Because <c>CurvePolygon</c> extends <c>Surface&lt;Curve&gt;</c> rather than
@@ -40,8 +43,9 @@ namespace NetTopologySuite.Geometries.Curves
     /// collapse a curved ring to a flat <see cref="LinearRing"/> (the F-CP
     /// structural contract; ISO/IEC 13249-3 §8.2 <c>ST_ExteriorRing</c> /
     /// <c>ST_NumInteriorRing</c> / <c>ST_InteriorRingN</c>).
-    /// Year-1 WKT and WKB type 10 are complete. The six ISO/IEC 13249-3
-    /// §5.1.67 curve names NTS has no carrier for (<c>CIRCLE</c>,
+    /// Year-1 WKT and WKB type 10 are complete. <see cref="Circle"/> is a
+    /// Year-1 ring (Ticket 19, WKT). The five ISO/IEC 13249-3
+    /// §5.1.67 curve names NTS has no carrier for (
     /// <c>GEODESICSTRING</c>, <c>ELLIPTICALCURVE</c>, <c>NURBSCURVE</c>,
     /// <c>CLOTHOID</c>, <c>SPIRALCURVE</c>) remain omitted.
     /// <para/>
@@ -77,9 +81,9 @@ namespace NetTopologySuite.Geometries.Curves
         /// <param name="holes">The interior rings, closed <c>Curve</c>s</param>
         /// <param name="factory">The geometry factory</param>
         /// <exception cref="ArgumentException">
-        /// If a ring is not an NTS Year-1 ring type (LineString, CircularString, or
-        /// CompoundCurve), a ring is not closed, a hole is <c>null</c>, or the shell
-        /// is empty while holes are not.
+        /// If a ring is not an NTS Year-1 ring type (LineString, CircularString,
+        /// Circle, or CompoundCurve), a ring is not closed, a hole is <c>null</c>,
+        /// or the shell is empty while holes are not.
         /// </exception>
         public CurvePolygon(Curve shell, Curve[] holes, GeometryFactory factory) : base(factory)
         {
@@ -115,7 +119,7 @@ namespace NetTopologySuite.Geometries.Curves
                 throw new ArgumentException("shell is empty but holes are not", nameof(holes));
             }
             // §8.2.1 Desc 2-3 types a ring as any ST_Curve, so the narrowing to
-            // LineString | CircularString | CompoundCurve is NTS Year-1 scope,
+            // LineString | CircularString | Circle | CompoundCurve is NTS Year-1 scope,
             // not an ISO rule. Unclosed rings bound nothing (the closed half of
             // Desc 2-3). The simplicity half of "ring", and every further ISO
             // "shall", belongs to arc-aware ST_IsValid (tickets 615-g/h).
@@ -152,7 +156,8 @@ namespace NetTopologySuite.Geometries.Curves
 
         /// <summary>
         /// NTS Year-1 ring types: <see cref="LineString"/> (including
-        /// <see cref="LinearRing"/>), <see cref="CircularString"/>, or
+        /// <see cref="LinearRing"/>), <see cref="CircularString"/>,
+        /// <see cref="Circle"/>, or
         /// <see cref="CompoundCurve"/> with <see cref="LineString"/> |
         /// <see cref="CircularString"/> members. ISO/IEC 13249-3 §8.2.1 Desc 2-3
         /// types a ring as any <c>ST_Curve</c>, so this is a scope check, not a
@@ -173,7 +178,7 @@ namespace NetTopologySuite.Geometries.Curves
         {
             if (ring == null || ring.IsEmpty)
                 return;
-            if (ring is LineString || ring is CircularString)
+            if (ring is LineString || ring is CircularString || ring is Circle)
                 return;
             if (ring is CompoundCurve compound)
             {
@@ -189,7 +194,7 @@ namespace NetTopologySuite.Geometries.Curves
                 return;
             }
             throw new ArgumentException(
-                "An NTS Year-1 CurvePolygon ring must be a LineString, CircularString or CompoundCurve, got "
+                "An NTS Year-1 CurvePolygon ring must be a LineString, CircularString, Circle or CompoundCurve, got "
                 + ring.GetType().Name + ".", paramName);
         }
 
@@ -356,6 +361,14 @@ namespace NetTopologySuite.Geometries.Curves
                         seq.GetCoordinate(i + 2));
                 }
                 return area;
+            }
+            if (ring is Circle circle && circle.TryGetCircumcircle(out _, out double radius))
+            {
+                var pts = circle.Coordinates;
+                double area = Math.PI * radius * radius;
+                return Orientation.Index(pts[0], pts[1], pts[2]) == OrientationIndex.CounterClockwise
+                    ? area
+                    : -area;
             }
             return Algorithm.Area.OfRing(ring.Coordinates);
         }
@@ -603,6 +616,9 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 case CircularString circularString:
                     line = circularString.Linearize(arcSegmentLength);
+                    break;
+                case Circle circle:
+                    line = circle.Linearize(arcSegmentLength);
                     break;
                 case CompoundCurve compoundCurve:
                     line = compoundCurve.Linearize(arcSegmentLength);

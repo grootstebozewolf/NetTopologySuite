@@ -71,8 +71,9 @@ namespace NetTopologySuite.IO
         public const string TIN = "TIN";
 
         /// <summary>
-        /// Token text for ISO/IEC 13249-3 §4.2.7 ST_Circle. Instantiable;
-        /// NTS has no carrier yet — the reader names the type and refuses.
+        /// Token text for ISO/IEC 13249-3 §4.2.7 ST_Circle. Year-1 carrier is
+        /// <see cref="Geometries.Curves.Circle"/> (Ticket 19, WKT). WKB type 18
+        /// is Ticket 20.
         /// </summary>
         public const string CIRCLE = "CIRCLE";
         /// <summary>

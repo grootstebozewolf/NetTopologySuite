@@ -92,6 +92,13 @@ namespace NetTopologySuite.Geometries
         /// </summary>
         Triangle = 17,
 
+        /// <summary>
+        /// Circle (ISO/IEC 13249-3 <c>ST_Circle</c>). The value is the SQL/MM
+        /// WKB type number 18. Year-1 of this type is WKT only; WKB 18
+        /// read/write is Ticket 20.
+        /// </summary>
+        Circle = 18,
+
 
 
         /*

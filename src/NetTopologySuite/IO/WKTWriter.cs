@@ -534,6 +534,10 @@ namespace NetTopologySuite.IO
                     AppendCircularStringTaggedText(circularString, outputOrdinates, useFormatting, level, writer, ordinateFormat);
                     break;
 
+                case Geometries.Curves.Circle circle:
+                    AppendCircleTaggedText(circle, outputOrdinates, useFormatting, level, writer, ordinateFormat);
+                    break;
+
                 case Geometries.Curves.CompoundCurve compoundCurve:
                     AppendCompoundCurveTaggedText(compoundCurve, outputOrdinates, useFormatting, level, writer, ordinateFormat);
                     break;
@@ -1016,6 +1020,24 @@ namespace NetTopologySuite.IO
         }
 
         /// <summary>
+        /// Converts a <c>Circle</c> to Circle Tagged Text format, then appends
+        /// it to the writer. The keyword is always <c>CIRCLE</c> — never
+        /// demoted to <c>CIRCULARSTRING</c>.
+        /// </summary>
+        /// <param name="circle">The <c>Circle</c> to process.</param>
+        /// <param name="outputOrdinates">A bit-pattern of ordinates to write.</param>
+        /// <param name="useFormatting">flag indicating that the output should be formatted</param>
+        /// <param name="level">the indentation level</param>
+        /// <param name="writer">The output writer to append to.</param>
+        /// <param name="ordinateFormat">The format to use for writing ordinate values.</param>
+        private void AppendCircleTaggedText(Geometries.Curves.Circle circle, Ordinates outputOrdinates, bool useFormatting, int level, TextWriter writer, OrdinateFormat ordinateFormat)
+        {
+            writer.Write($"{WKTConstants.CIRCLE} ");
+            AppendOrdinateText(outputOrdinates, writer);
+            AppendSequenceText(circle.CoordinateSequence, outputOrdinates, useFormatting, level, false, writer, ordinateFormat);
+        }
+
+        /// <summary>
         /// Converts a <c>CompoundCurve</c> to CompoundCurve Tagged Text format, then
         /// appends it to the writer.
         /// </summary>
@@ -1061,6 +1083,11 @@ namespace NetTopologySuite.IO
                     writer.Write($"{WKTConstants.CIRCULARSTRING} ");
                     AppendSequenceText(circularString.CoordinateSequence, outputOrdinates, useFormatting, level, false, writer, ordinateFormat);
                 }
+                else if (component is Geometries.Curves.Circle circle)
+                {
+                    writer.Write($"{WKTConstants.CIRCLE} ");
+                    AppendSequenceText(circle.CoordinateSequence, outputOrdinates, useFormatting, level, false, writer, ordinateFormat);
+                }
                 else
                 {
                     AppendSequenceText(((LineString)component).CoordinateSequence, outputOrdinates, useFormatting, level, false, writer, ordinateFormat);
@@ -1105,11 +1132,12 @@ namespace NetTopologySuite.IO
         /// <summary>
         /// Converts a Year-1 curve member to Text format, then appends it to
         /// the writer: a <c>CURVEPOLYGON</c> ring or a <c>MULTICURVE</c>
-        /// member. NTS Year-1 scope: emits only a bare
-        /// <c>LineString</c> body, tagged <c>CIRCULARSTRING</c>, or tagged
-        /// <c>COMPOUNDCURVE</c>. The six ISO/IEC 13249-3 §4.2.1 curve types NTS
-        /// has no carrier for (CIRCLE, GEODESICSTRING, ELLIPTICALCURVE,
-        /// NURBSCURVE, CLOTHOID, SPIRALCURVE) have no value to write.
+        /// member. NTS Year-1 scope: emits a bare
+        /// <c>LineString</c> body, tagged <c>CIRCULARSTRING</c>, tagged
+        /// <c>CIRCLE</c>, or tagged <c>COMPOUNDCURVE</c>. The five ISO/IEC
+        /// 13249-3 §4.2.1 curve types NTS has no carrier for (GEODESICSTRING,
+        /// ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE) have no value
+        /// to write.
         /// </summary>
         /// <param name="member">The ring or MultiCurve member to process.</param>
         /// <param name="outputOrdinates">A bit-pattern of ordinates to write.</param>
@@ -1126,6 +1154,11 @@ namespace NetTopologySuite.IO
                     AppendSequenceText(circularString.CoordinateSequence, outputOrdinates, useFormatting, level, false, writer, ordinateFormat);
                     break;
 
+                case Geometries.Curves.Circle circle:
+                    writer.Write($"{WKTConstants.CIRCLE} ");
+                    AppendSequenceText(circle.CoordinateSequence, outputOrdinates, useFormatting, level, false, writer, ordinateFormat);
+                    break;
+
                 case Geometries.Curves.CompoundCurve compoundCurve:
                     writer.Write($"{WKTConstants.COMPOUNDCURVE} ");
                     AppendCompoundCurveText(compoundCurve, outputOrdinates, useFormatting, level, writer, ordinateFormat);
@@ -1135,7 +1168,7 @@ namespace NetTopologySuite.IO
                     if (!(member is LineString lineString))
                     {
                         throw new ArgumentException(
-                            "The NTS Year-1 WKT writer emits only LineString, CircularString or CompoundCurve members, got "
+                            "The NTS Year-1 WKT writer emits only LineString, CircularString, Circle or CompoundCurve members, got "
                             + member.GetType().Name + ".");
                     }
                     AppendSequenceText(lineString.CoordinateSequence, outputOrdinates, useFormatting, level, false, writer, ordinateFormat);
@@ -1147,7 +1180,8 @@ namespace NetTopologySuite.IO
         /// Converts a <c>MultiCurve</c> to MultiCurve Tagged Text (SQL/MM).
         /// Year-1 members reuse Ticket 1 g4 <c>curveMember</c> tagging
         /// (<see cref="AppendCurveRingText"/>): bare <c>LineString</c>,
-        /// tagged <c>CIRCULARSTRING</c>, tagged <c>COMPOUNDCURVE</c>.
+        /// tagged <c>CIRCULARSTRING</c>, tagged <c>CIRCLE</c>, tagged
+        /// <c>COMPOUNDCURVE</c>.
         /// </summary>
         private void AppendMultiCurveTaggedText(Geometries.Curves.MultiCurve multiCurve, Ordinates outputOrdinates, bool useFormatting, int level, TextWriter writer, OrdinateFormat ordinateFormat)
         {

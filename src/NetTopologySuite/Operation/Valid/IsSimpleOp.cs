@@ -168,6 +168,7 @@ namespace NetTopologySuite.Operation.Valid
                 // their overrides throw for the kernel's fail-closed
                 // residues.
                 if (geom is Geometries.Curves.CircularString
+                    || geom is Geometries.Curves.Circle
                     || geom is Geometries.Curves.CompoundCurve
                     || geom is Geometries.Curves.CurvePolygon
                     || geom is Geometries.Curves.MultiCurve

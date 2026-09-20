@@ -95,6 +95,7 @@ namespace NetTopologySuite.Geometries.Curves
             switch (g)
             {
                 case CircularString _:
+                case Circle _:
                 case CompoundCurve _:
                     return true;
                 case MultiCurve _:
@@ -302,6 +303,8 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 case CircularString cs:
                     return TryFindDefiniteInvalidity(cs, out reason);
+                case Circle circle:
+                    return TryFindDefiniteInvalidity(circle, out reason);
                 case CompoundCurve cc:
                     return TryFindDefiniteInvalidity(cc, out reason);
                 case CurvePolygon cp:
@@ -326,6 +329,29 @@ namespace NetTopologySuite.Geometries.Curves
                     reason = null;
                     return false;
             }
+        }
+
+        private static bool TryFindDefiniteInvalidity(Circle circle, out string reason)
+        {
+            var seq = circle.CoordinateSequence;
+            for (int i = 0; i < seq.Count; i++)
+            {
+                double x = seq.GetX(i), y = seq.GetY(i);
+                if (double.IsNaN(x) || double.IsInfinity(x) || double.IsNaN(y) || double.IsInfinity(y))
+                {
+                    reason = "non-finite coordinate at index " + i +
+                        " (classical IsValidOp parity; not a clause rule).";
+                    return true;
+                }
+            }
+            if (seq.Count != 0 && seq.Count != 3)
+            {
+                reason = "ISO/IEC 13249-3 §4.2.7 / §5.1.67: a Circle needs exactly " +
+                    "three control points; found " + seq.Count + ".";
+                return true;
+            }
+            reason = null;
+            return false;
         }
 
         private static bool TryFindDefiniteInvalidity(CircularString cs, out string reason)

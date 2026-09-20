@@ -33,7 +33,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         /// </summary>
         private static readonly string[] UnimplementedSqlMmCurveKeywords =
         {
-            "CIRCLE", "GEODESICSTRING", "ELLIPTICALCURVE", "NURBSCURVE", "CLOTHOID", "SPIRALCURVE"
+            "GEODESICSTRING", "ELLIPTICALCURVE", "NURBSCURVE", "CLOTHOID", "SPIRALCURVE"
         };
 
         [TestCase("CURVEPOLYGON EMPTY", Description = "FCP-WKT Ticket1 EMPTY")]
@@ -137,7 +137,6 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(again.Coordinates[0].Z, Is.EqualTo(5));
         }
 
-        [TestCase("CIRCLE", "CIRCLE (0 0, 1 0, 0 1)")]
         [TestCase("GEODESICSTRING", "GEODESICSTRING (0 0, 10 0, 10 10)")]
         [TestCase("ELLIPTICALCURVE", "ELLIPTICALCURVE (0 0, 1, 1, 0, 90)")]
         [TestCase("NURBSCURVE", "NURBSCURVE ((0 0, 10 0, 10 10, 0 10, 0 0))")]
@@ -153,7 +152,6 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(ex.Message, Does.Not.Contain("Unknown type"));
         }
 
-        [TestCase("CIRCLE Z (0 0, 1 0, 0 1)")]
         [TestCase("GEODESICSTRINGM (0 0, 1 0, 1 1)")]
         [TestCase("SPIRALCURVEZM ((0 0, 1 0, 1 1, 0 0))")]
         public void Ticket1_RejectsUnimplementedSqlMmCurveWithOrdinateSuffixAsRing(string ringBody)
@@ -203,7 +201,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             var ex = Assert.Throws<ParseException>(() =>
                 _reader.Read("CURVEPOLYGON (COMPOUNDCURVE ((0 0, 1 0), CIRCLE (1 0, 2 1, 1 2), (1 2, 0 0)))"));
             Assert.That(ex.Message, Does.Contain("CIRCLE"));
-            Assert.That(ex.Message, Does.Contain("not implemented"));
+            Assert.That(ex.Message, Does.Contain("CompoundCurve"));
         }
 
         /// <summary>
