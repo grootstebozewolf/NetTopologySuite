@@ -146,16 +146,18 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         /// <summary>
-        /// In type position the same tokens are ordinary unknown words, not
-        /// TIN named-field refuses.
+        /// In type position the same tokens are ordinary unknown words or
+        /// ordinary parse errors, not TIN named-field refuses.
+        /// <c>POINTS</c> starts with <c>POINT</c> and therefore hits
+        /// <c>Invalid dimension modifiers</c> rather than <c>Unknown type</c>.
         /// </summary>
-        [TestCase("PATCHES (((0 0, 1 0, 0 1, 0 0)))")]
-        [TestCase("ELEMENTS (POINTS ((0 0)))")]
-        [TestCase("POINTS ((0 0, 1 0, 0 1))")]
-        public void Ticket16_FieldTokensInTypePositionAreUnknownType(string wkt)
+        [TestCase("PATCHES (((0 0, 1 0, 0 1, 0 0)))", "Unknown type")]
+        [TestCase("ELEMENTS (POINTS ((0 0)))", "Unknown type")]
+        [TestCase("POINTS ((0 0, 1 0, 0 1))", "Invalid dimension modifiers")]
+        public void Ticket16_FieldTokensInTypePositionAreOrdinaryErrors(string wkt, string ordinary)
         {
             var ex = Assert.Throws<ParseException>(() => _reader.Read(wkt));
-            Assert.That(ex.Message, Does.Contain("Unknown type"));
+            Assert.That(ex.Message, Does.Contain(ordinary));
             Assert.That(ex.Message, Does.Not.Contain("named field"));
             Assert.That(ex.Message, Does.Not.Contain("not implemented"));
         }
