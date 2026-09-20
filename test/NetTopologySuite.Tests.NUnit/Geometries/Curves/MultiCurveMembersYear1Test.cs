@@ -63,8 +63,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
                 "FMC-DOVE: GetGeometryN must return Curve, not LineString");
 
             var indexer = typeof(MultiCurve).GetProperty("Item",
-                System.Reflection.BindingFlags.DeclaredOnly | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance,
-                null, new[] { typeof(int) }, null);
+                System.Reflection.BindingFlags.DeclaredOnly | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
             Assert.That(indexer, Is.Not.Null, "FMC-DOVE: MultiCurve must expose a typed indexer");
             Assert.That(indexer.PropertyType, Is.EqualTo(typeof(Curve)),
                 "FMC-DOVE: indexer must be typed as Curve");
