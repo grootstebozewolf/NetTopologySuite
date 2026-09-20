@@ -152,7 +152,7 @@ namespace NetTopologySuite.Geometries.Curves
         /// </summary>
         /// <param name="n">Zero-based member index.</param>
         /// <returns>The member curve; the same instance stored at construction.</returns>
-        public override Curve GetGeometryN(int n) => (Curve)base.GetGeometryN(n);
+        public new Curve GetGeometryN(int n) => (Curve)base.GetGeometryN(n);
 
         /// <summary>
         /// The member at <paramref name="i"/> as a <see cref="Curve"/>
