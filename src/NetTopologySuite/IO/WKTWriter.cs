@@ -1265,7 +1265,8 @@ namespace NetTopologySuite.IO
 
         /// <summary>
         /// Converts a <c>Tin</c> to Tin Tagged Text format, then appends it to the
-        /// writer.
+        /// writer. Year-1 emits <c>TIN [Z|M|ZM] (triangleText {, triangleText}…) | EMPTY</c>
+        /// and never the <c>PATCHES</c> field name.
         /// </summary>
         /// <param name="tin">The <c>Tin</c> to process.</param>
         /// <param name="outputOrdinates">A bit-pattern of ordinates to write.</param>

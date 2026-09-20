@@ -1494,7 +1494,33 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         }
 
         /// <summary>
+        /// Year-1-omitted ISO/IEC 13249-3 TIN WKT named fields. After the TIN
+        /// opener <c>(</c>, these tokens name <c>PATCHES</c> / <c>ELEMENTS</c> /
+        /// <c>MAXSIDELENGTH</c> or an <c>ELEMENTS</c> kind. NTS Year-1 is the g4
+        /// list of <c>polygonText</c> members only. Exact spellings, never a
+        /// shortened leftover (<c>PATCH</c>, <c>POINT</c>, <c>BREAK</c>).
+        /// </summary>
+        /// <remarks>
+        /// The eleven <c>ELEMENTS</c> kinds are the ISO/IEC 13249-3
+        /// <c>ST_TINElement</c> / GML <c>TINElementTypeType</c> tokens:
+        /// <c>POINTS</c> (randomPoints), <c>GROUPSPOT</c>, <c>BOUNDARY</c>,
+        /// <c>BREAKLINE</c>, <c>SOFTBREAK</c>, <c>CONTROLCONTOUR</c>,
+        /// <c>BREAKVOID</c>, <c>DRAPEVOID</c>, <c>VOID</c>, <c>HOLE</c>,
+        /// <c>STOPLINE</c>.
+        /// </remarks>
+        private static readonly string[] Year1OmittedTinNamedFields =
+        {
+            "PATCHES", "ELEMENTS", "MAXSIDELENGTH",
+            "POINTS", "BREAKLINE", "BREAKVOID", "SOFTBREAK", "STOPLINE",
+            "VOID", "HOLE", "DRAPEVOID", "GROUPSPOT", "BOUNDARY", "CONTROLCONTOUR"
+        };
+
+        /// <summary>
         /// Creates a <c>Tin</c> using the next token in the stream.
+        /// NTS Year-1 WKT is the g4 list
+        /// <c>TIN [Z|M|ZM] (polygonText {, polygonText}…) | EMPTY</c>.
+        /// Named fields after the opener (<c>PATCHES</c>, <c>ELEMENTS</c>,
+        /// <c>MAXSIDELENGTH</c>, or an <c>ELEMENTS</c> kind) are refused by name.
         /// </summary>
         /// <param name="tokens">
         ///   Tokenizer over a stream of text in Well-known Text
@@ -1510,6 +1536,8 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
             if (nextToken.Equals(WKTConstants.EMPTY))
                 return new Geometries.Curves.Tin(null, factory);
 
+            RejectYear1OmittedTinNamedField(LookAheadWord(tokens));
+
             var triangles = new List<Geometries.Curves.Triangle>();
             do
             {
@@ -1522,6 +1550,28 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
             while (nextToken.Equals(","));
 
             return new Geometries.Curves.Tin(triangles.ToArray(), factory);
+        }
+
+        /// <summary>
+        /// Refuses a Year-1-omitted TIN named field after the opener
+        /// <c>(</c>. The message names the field so <c>TIN (PATCHES …)</c>
+        /// is not reported as “expected '('” or “unknown type”.
+        /// </summary>
+        /// <param name="word">The lookahead token after the TIN opener.</param>
+        /// <exception cref="ParseException">When <paramref name="word"/> is a Year-1-omitted TIN named field.</exception>
+        private static void RejectYear1OmittedTinNamedField(string word)
+        {
+            if (word == null)
+                return;
+            foreach (string field in Year1OmittedTinNamedFields)
+            {
+                if (!field.Equals(word, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                throw new ParseException(
+                    "SQL/MM TIN named field is not implemented: " + field +
+                    ". NTS Year-1 WKT is TIN [Z|M|ZM] (polygonText {, polygonText}...) | EMPTY " +
+                    "(ISO/IEC 13249-3 g4 list; no PATCHES / ELEMENTS / MAXSIDELENGTH).");
+            }
         }
     }
 }
