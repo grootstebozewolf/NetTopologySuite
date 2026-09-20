@@ -212,10 +212,14 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             byte[] curveBytes = ewkbWriter.Write(curvePolygon);
             byte[] polygonBytes = ewkbWriter.Write(polygon);
 
-            Assert.That((curveBytes[1] & 0x20) != 0, Is.True, "EWKB SRID flag on CurvePolygon");
-            Assert.That((polygonBytes[1] & 0x20) != 0, Is.True, "EWKB SRID flag on Polygon");
-            Assert.That(ReadTypeLe(curveBytes, 1) & 0x1FFFFFFFu, Is.EqualTo(10u | 0x20000000u));
+            uint curveType = ReadTypeLe(curveBytes, 1);
+            uint polygonType = ReadTypeLe(polygonBytes, 1);
+            Assert.That((curveType & 0x20000000u) != 0, Is.True, "EWKB SRID flag on CurvePolygon");
+            Assert.That((polygonType & 0x20000000u) != 0, Is.True, "EWKB SRID flag on Polygon");
+            Assert.That(curveType & 0x0FFFFFFFu, Is.EqualTo(10u));
+            Assert.That(polygonType & 0x0FFFFFFFu, Is.EqualTo(3u));
             Assert.That(BitConverter.ToInt32(curveBytes, 5), Is.EqualTo(4326));
+            Assert.That(BitConverter.ToInt32(polygonBytes, 5), Is.EqualTo(4326));
 
             var again = (CurvePolygon)_wkbReader.Read(curveBytes);
             Assert.That(again.SRID, Is.EqualTo(4326));
