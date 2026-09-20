@@ -1103,21 +1103,22 @@ namespace NetTopologySuite.IO
         }
 
         /// <summary>
-        /// Converts a single ring of a <c>CurvePolygon</c> to Text format, then
-        /// appends it to the writer. Year-1 lock: emits only a bare
+        /// Converts a Year-1 curve member (ISO/IEC 13249-3 §5.1.67 g4
+        /// <c>curveMember</c>) to Text format: a <c>CURVEPOLYGON</c> ring or
+        /// a <c>MULTICURVE</c> member. Year-1 lock: emits only a bare
         /// <c>LineString</c> body, tagged <c>CIRCULARSTRING</c>, or tagged
         /// <c>COMPOUNDCURVE</c>. Year-2 keywords (CIRCLE, GEODESIC, ELLIPSE,
         /// NURBS, CLOTHOID, SPIRAL) are never written for Year-1 objects.
         /// </summary>
-        /// <param name="ring">The ring to process.</param>
+        /// <param name="member">The ring or MultiCurve member to process.</param>
         /// <param name="outputOrdinates">A bit-pattern of ordinates to write.</param>
         /// <param name="useFormatting">flag indicating that the output should be formatted</param>
         /// <param name="level">the indentation level</param>
         /// <param name="writer">The output writer to append to.</param>
         /// <param name="ordinateFormat">The format to use for writing ordinate values.</param>
-        private void AppendCurveRingText(Curve ring, Ordinates outputOrdinates, bool useFormatting, int level, TextWriter writer, OrdinateFormat ordinateFormat)
+        private void AppendCurveRingText(Curve member, Ordinates outputOrdinates, bool useFormatting, int level, TextWriter writer, OrdinateFormat ordinateFormat)
         {
-            switch (ring)
+            switch (member)
             {
                 case Geometries.Curves.CircularString circularString:
                     writer.Write($"{WKTConstants.CIRCULARSTRING} ");
@@ -1130,11 +1131,11 @@ namespace NetTopologySuite.IO
                     break;
 
                 default:
-                    if (!(ring is LineString lineString))
+                    if (!(member is LineString lineString))
                     {
                         throw new ArgumentException(
-                            "Year-1 WKT writer emits only LineString, CircularString or CompoundCurve rings, got "
-                            + ring.GetType().Name + ".");
+                            "Year-1 WKT writer emits only LineString, CircularString or CompoundCurve members, got "
+                            + member.GetType().Name + ".");
                     }
                     AppendSequenceText(lineString.CoordinateSequence, outputOrdinates, useFormatting, level, false, writer, ordinateFormat);
                     break;
@@ -1142,7 +1143,10 @@ namespace NetTopologySuite.IO
         }
 
         /// <summary>
-        /// Converts a <c>MultiCurve</c> to MultiCurve Tagged Text (GEOS / SQL/MM).
+        /// Converts a <c>MultiCurve</c> to MultiCurve Tagged Text (SQL/MM).
+        /// Year-1 members reuse Ticket 1 g4 <c>curveMember</c> tagging
+        /// (<see cref="AppendCurveRingText"/>): bare <c>LineString</c>,
+        /// tagged <c>CIRCULARSTRING</c>, tagged <c>COMPOUNDCURVE</c>.
         /// </summary>
         private void AppendMultiCurveTaggedText(Geometries.Curves.MultiCurve multiCurve, Ordinates outputOrdinates, bool useFormatting, int level, TextWriter writer, OrdinateFormat ordinateFormat)
         {
@@ -1157,7 +1161,7 @@ namespace NetTopologySuite.IO
             for (int i = 0; i < multiCurve.NumGeometries; i++)
             {
                 if (i > 0) writer.Write(", ");
-                AppendGeometryTaggedText(multiCurve.GetGeometryN(i), outputOrdinates, useFormatting, level + 1, writer, ordinateFormat);
+                AppendCurveRingText((Curve)multiCurve.GetGeometryN(i), outputOrdinates, useFormatting, level + 1, writer, ordinateFormat);
             }
             writer.Write(")");
         }

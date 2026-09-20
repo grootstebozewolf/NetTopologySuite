@@ -782,6 +782,7 @@ namespace NetTopologySuite.IO
             else
             {
                 RejectYear2CurveKeyword(type);
+                RejectNonYear1MultiCurveKeyword(type);
                 throw new ParseException("Unknown type: " + type);
             }
 
@@ -1053,15 +1054,15 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         /// Creates a <c>Curve</c> using the next token in the stream: either a bare
         /// coordinate list (a <c>LineString</c>), a tagged <c>CIRCULARSTRING</c>, or a
         /// tagged <c>COMPOUNDCURVE</c> -- the alternatives of the ISO/IEC 13249-3
-        /// §5.1.67 <c>&lt;curve text&gt;</c> / <c>&lt;ring text&gt;</c> productions
-        /// (Year-1 ST_CurvePolygon ring grammar g4).
+        /// §5.1.67 <c>&lt;curve text&gt;</c> / g4 <c>curveMember</c> productions
+        /// (Year-1 ST_CurvePolygon rings and ST_MultiCurve members).
         /// </summary>
         /// <remarks>
         /// A nested <c>COMPOUNDCURVE</c> component of a standalone
         /// <c>CompoundCurve</c> is still spliced flat by the constructor. When
-        /// <paramref name="asCurvePolygonRing"/> is <c>true</c>, nested
-        /// <c>COMPOUNDCURVE</c> is rejected (Year-1 CompoundCurve rings are
-        /// contiguous <c>LineString</c> | <c>CircularString</c> members only).
+        /// <paramref name="year1MemberLock"/> is <c>true</c>, nested
+        /// <c>COMPOUNDCURVE</c> is rejected (Year-1 CompoundCurve members are
+        /// contiguous <c>LineString</c> | <c>CircularString</c> only).
         /// Year-2 keywords (CIRCLE, GEODESIC, ELLIPSE, NURBS, CLOTHOID, SPIRAL)
         /// are rejected with a parse error and never flattened.
         /// </remarks>
@@ -1071,15 +1072,16 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         /// </param>
         /// <param name="factory">The factory to create the geometry</param>
         /// <param name="ordinateFlags">A flag indicating the ordinates to expect.</param>
-        /// <param name="asCurvePolygonRing">
-        ///   <c>true</c> when this production is a <c>CURVEPOLYGON</c> ring
-        ///   (Year-1 lock: no nested <c>COMPOUNDCURVE</c>).
+        /// <param name="year1MemberLock">
+        ///   <c>true</c> when this production is a Year-1 <c>CURVEPOLYGON</c>
+        ///   ring or <c>MULTICURVE</c> member (no nested <c>COMPOUNDCURVE</c>).
         /// </param>
         /// <returns>A <c>Curve</c> specified by the next token in the stream.</returns>
-        private Curve ReadCurveText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags, bool asCurvePolygonRing = false)
+        private Curve ReadCurveText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags, bool year1MemberLock = false)
         {
             string current = LookAheadWord(tokens);
             RejectYear2CurveKeyword(current);
+            RejectNonYear1MultiCurveKeyword(current);
 
             if (current.Equals(WKTConstants.EMPTY) || current.Equals("("))
             {
@@ -1092,8 +1094,8 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
             // <curve text> admits only a bare coordinate body, CIRCULARSTRING
             // or COMPOUNDCURVE as components, but GEOS and PostGIS accept
             // tagged LINESTRING components inside COMPOUNDCURVE /
-            // CURVEPOLYGON. Accepted on input for interop; the writer emits
-            // the conformant bare-body form.
+            // CURVEPOLYGON / MULTICURVE. Accepted on input for interop; the
+            // writer emits the conformant bare-body form.
             if (current.StartsWith(WKTConstants.LINESTRING, StringComparison.OrdinalIgnoreCase))
             {
                 GetNextWord(tokens);
@@ -1114,14 +1116,14 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
             {
                 GetNextWord(tokens);
                 CheckCurveComponentZm(GetComponentOrdinateFlags(tokens, current, WKTConstants.COMPOUNDCURVE), ordinateFlags, WKTConstants.COMPOUNDCURVE);
-                return ReadCompoundCurveText(tokens, factory, ordinateFlags, year1RingMembers: asCurvePolygonRing);
+                return ReadCompoundCurveText(tokens, factory, ordinateFlags, year1Members: year1MemberLock);
             }
 
-            if (asCurvePolygonRing)
+            if (year1MemberLock)
             {
                 throw new ParseException(
-                    "Unexpected CurvePolygon ring token '" + current + "': Year-1 ST_CurvePolygon ring production " +
-                    "(ISO/IEC 13249-3 §8.2 / §5.1.67) is lineStringText | circularStringGeometry | compoundCurveGeometry only.");
+                    "Unexpected Year-1 curve member token '" + current + "': Year-1 ST_CurvePolygon ring / ST_MultiCurve member production " +
+                    "(ISO/IEC 13249-3 §8.2 / §5.1.67 g4 curveMember) is lineStringText | circularStringGeometry | compoundCurveGeometry only.");
             }
 
             throw new ParseException("Unexpected token: " + current);
@@ -1217,6 +1219,10 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
 
         /// <summary>
         /// Creates a <c>MultiCurve</c> (GEOS / SQL/MM) using the next token in the stream.
+        /// Year-1 member production (ISO/IEC 13249-3 §5.1.67 g4 <c>curveMember</c>,
+        /// reused from Ticket 1 <see cref="ReadCurveText"/>):
+        /// <c>lineStringText</c> | <c>circularStringGeometry</c> |
+        /// <c>compoundCurveGeometry</c> only.
         /// </summary>
         private Geometries.Curves.MultiCurve ReadMultiCurveText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags)
         {
@@ -1227,7 +1233,7 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
             var curves = new List<Curve>();
             do
             {
-                curves.Add(ReadCurveText(tokens, factory, ordinateFlags));
+                curves.Add(ReadCurveText(tokens, factory, ordinateFlags, year1MemberLock: true));
                 nextToken = GetNextCloserOrComma(tokens);
             }
             while (nextToken.Equals(","));
@@ -1283,14 +1289,14 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         /// </param>
         /// <param name="factory">The factory to create the geometry</param>
         /// <param name="ordinateFlags">A flag indicating the ordinates to expect.</param>
-        /// <param name="year1RingMembers">
+        /// <param name="year1Members">
         ///   When <c>true</c>, this <c>COMPOUNDCURVE</c> is a Year-1
-        ///   <c>CURVEPOLYGON</c> ring: members must be <c>LineString</c> or
-        ///   <c>CircularString</c> only (nested <c>COMPOUNDCURVE</c> is
-        ///   rejected, not flattened).
+        ///   <c>CURVEPOLYGON</c> ring or <c>MULTICURVE</c> member: members
+        ///   must be <c>LineString</c> or <c>CircularString</c> only (nested
+        ///   <c>COMPOUNDCURVE</c> is rejected, not flattened).
         /// </param>
         /// <returns>A <c>CompoundCurve</c> specified by the next token in the stream.</returns>
-        private Geometries.Curves.CompoundCurve ReadCompoundCurveText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags, bool year1RingMembers = false)
+        private Geometries.Curves.CompoundCurve ReadCompoundCurveText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags, bool year1Members = false)
         {
             string nextToken = GetNextEmptyOrOpener(tokens);
             if (nextToken.Equals(WKTConstants.EMPTY))
@@ -1299,15 +1305,15 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
             var curves = new List<Curve>();
             do
             {
-                if (year1RingMembers)
+                if (year1Members)
                 {
                     string member = LookAheadWord(tokens);
                     RejectYear2CurveKeyword(member);
                     if (MatchesTypeWord(member, WKTConstants.COMPOUNDCURVE))
                     {
                         throw new ParseException(
-                            "Nested COMPOUNDCURVE is not a Year-1 CurvePolygon ring member " +
-                            "(ISO/IEC 13249-3 §8.2: CompoundCurve rings are contiguous LineString | CircularString only).");
+                            "Nested COMPOUNDCURVE is not a Year-1 CompoundCurve member " +
+                            "(ISO/IEC 13249-3: Year-1 CompoundCurve members are contiguous LineString | CircularString only).");
                     }
                 }
                 var curve = ReadCurveText(tokens, factory, ordinateFlags);
@@ -1338,12 +1344,12 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
             if (nextToken.Equals(WKTConstants.EMPTY))
                 return new Geometries.Curves.CurvePolygon(null, factory);
 
-            var shell = ReadCurveText(tokens, factory, ordinateFlags, asCurvePolygonRing: true);
+            var shell = ReadCurveText(tokens, factory, ordinateFlags, year1MemberLock: true);
             var holes = new List<Curve>();
             nextToken = GetNextCloserOrComma(tokens);
             while (nextToken.Equals(","))
             {
-                var hole = ReadCurveText(tokens, factory, ordinateFlags, asCurvePolygonRing: true);
+                var hole = ReadCurveText(tokens, factory, ordinateFlags, year1MemberLock: true);
                 holes.Add(hole);
                 nextToken = GetNextCloserOrComma(tokens);
             }
@@ -1352,11 +1358,21 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
 
         /// <summary>
         /// Year-2 curve keywords that are not admitted as Year-1
-        /// <c>ST_CurvePolygon</c> rings (ISO/IEC 13249-3 §8.2).
+        /// <c>ST_CurvePolygon</c> rings or <c>ST_MultiCurve</c> members
+        /// (ISO/IEC 13249-3 §8.2 / §5.1.67).
         /// </summary>
         private static readonly string[] Year2CurveKeywords =
         {
             "CIRCLE", "GEODESIC", "ELLIPSE", "NURBS", "CLOTHOID", "SPIRAL"
+        };
+
+        /// <summary>
+        /// Collection keywords that are not Year-1 <c>ST_MultiCurve</c>
+        /// (<c>MULTICURVE</c> with LS|CS|CC members).
+        /// </summary>
+        private static readonly string[] NonYear1MultiCurveKeywords =
+        {
+            "MULTICIRCULARSTRING", "MULTICOMPOUNDCURVE"
         };
 
         /// <summary>
@@ -1376,7 +1392,7 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
 
         /// <summary>
         /// Rejects Year-2 curve keywords with a parse error. Never silently
-        /// flattened to a Year-1 ring.
+        /// flattened to a Year-1 ring or MultiCurve member.
         /// </summary>
         /// <param name="word">The lookahead type word.</param>
         /// <exception cref="ParseException">When <paramref name="word"/> is a Year-2 curve keyword.</exception>
@@ -1389,9 +1405,30 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
                 if (!MatchesTypeWord(word, keyword))
                     continue;
                 throw new ParseException(
-                    keyword + " is a Year-2 curve type and is not admitted as a Year-1 ST_CurvePolygon ring " +
-                    "(ISO/IEC 13249-3 §8.2: ring production is lineStringText | circularStringGeometry | compoundCurveGeometry only). " +
+                    keyword + " is a Year-2 curve type and is not admitted as a Year-1 ST_CurvePolygon ring or ST_MultiCurve member " +
+                    "(ISO/IEC 13249-3 §8.2 / §5.1.67: production is lineStringText | circularStringGeometry | compoundCurveGeometry only). " +
                     "Year-2 keywords are rejected on read and are never silently flattened.");
+            }
+        }
+
+        /// <summary>
+        /// Rejects <c>MULTICIRCULARSTRING</c> / <c>MULTICOMPOUNDCURVE</c>.
+        /// Year-1 collection keyword is <c>MULTICURVE</c> only.
+        /// </summary>
+        /// <param name="word">The lookahead type word.</param>
+        /// <exception cref="ParseException">When <paramref name="word"/> is a non-Year-1 MultiCurve keyword.</exception>
+        private static void RejectNonYear1MultiCurveKeyword(string word)
+        {
+            if (word == null)
+                return;
+            foreach (string keyword in NonYear1MultiCurveKeywords)
+            {
+                if (!MatchesTypeWord(word, keyword))
+                    continue;
+                throw new ParseException(
+                    keyword + " is not a Year-1 collection keyword. SQL/MM ST_MultiCurve is MULTICURVE " +
+                    "with LineString | CircularString | CompoundCurve members (ISO/IEC 13249-3). " +
+                    "MULTICIRCULARSTRING / MULTICOMPOUNDCURVE are rejected on read.");
             }
         }
 
