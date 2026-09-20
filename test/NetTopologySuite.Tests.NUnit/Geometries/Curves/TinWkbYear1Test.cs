@@ -185,20 +185,14 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void Ticket17_NestedIsoPolygonZmTypesReduceToThree()
+        public void Ticket17_NestedPolygonIsoTypesReduceToThree()
         {
-            var xy = _wktReader.Read(WktOnePatch);
-            byte[] bytes = _wkbWriter.Write(xy);
-            Assert.That(ReadTypeLe(bytes, 10), Is.EqualTo(3u));
-
-            foreach (uint isoType in new uint[] { 1003u, 2003u, 3003u })
-            {
-                byte[] patched = (byte[])bytes.Clone();
-                WriteTypeLe(patched, 10, isoType);
-                var again = (Tin)_wkbReader.Read(patched);
-                Assert.That(again.GetGeometryN(0), Is.InstanceOf<Triangle>(), "nested ISO type " + isoType);
-                Assert.That(again.EqualsExact(xy), Is.True);
-            }
+            // Writer emits nested 1003/2003/3003 with matching ordinate
+            // payloads; the reader recovers them as Polygon (3) via the
+            // existing reducer only — no WKBPolygonZ|M|ZM arm on the TIN path.
+            AssertNestedPolygonIsoType(WktZ, emitZ: true, emitM: false, expectedNestedType: 1003u);
+            AssertNestedPolygonIsoType(WktM, emitZ: false, emitM: true, expectedNestedType: 2003u);
+            AssertNestedPolygonIsoType(WktZm, emitZ: true, emitM: true, expectedNestedType: 3003u);
         }
 
         [Test]
@@ -294,6 +288,19 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
                 Assert.That(type, Is.EqualTo(16u), "top-level type for " + wkt);
                 AssertYear1NestedTypeCodesOnly(bytes);
             }
+        }
+
+        private void AssertNestedPolygonIsoType(string wkt, bool emitZ, bool emitM, uint expectedNestedType)
+        {
+            var original = _wktReader.Read(wkt);
+            var writer = new WKBWriter(ByteOrder.LittleEndian, false, emitZ, emitM);
+            byte[] bytes = writer.Write(original);
+            Assert.That(ReadTypeLe(bytes, 10), Is.EqualTo(expectedNestedType));
+            Assert.That((ReadTypeLe(bytes, 10) & 0xFFFFu) % 1000, Is.EqualTo(3u));
+
+            var again = (Tin)_wkbReader.Read(bytes);
+            Assert.That(again.GetGeometryN(0), Is.InstanceOf<Triangle>(), "nested ISO type " + expectedNestedType);
+            Assert.That(again.EqualsExact(original), Is.True);
         }
 
         private void AssertZmRoundTrip(string wkt, WKTWriter wktWriter, bool emitZ, bool emitM,
