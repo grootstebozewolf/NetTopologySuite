@@ -126,6 +126,9 @@ namespace NetTopologySuite.IO
                 case "MultiSurface":
                     geometryType = WKBGeometryTypes.WKBMultiSurface;
                     break;
+                case "TIN":
+                    geometryType = WKBGeometryTypes.WKBTin;
+                    break;
                 default:
                     Assert.ShouldNeverReachHere("Unknown geometry type:" + geom.GeometryType);
                     throw new ArgumentException("geom");
@@ -324,6 +327,8 @@ namespace NetTopologySuite.IO
                 WriteMultiSurface(multiSurface, writer, includeSRID);
             else if (geometry is MultiPolygon multiPolygon)
                 Write(multiPolygon, writer, includeSRID);
+            else if (geometry is Tin tin)
+                WriteTin(tin, writer, includeSRID);
             else if (geometry is GeometryCollection geometryCollection)
                 Write(geometryCollection, writer, includeSRID);
             else
@@ -657,6 +662,8 @@ namespace NetTopologySuite.IO
                 return new byte[GetRequiredBufferSize(multiSurface, includeSRID)];
             if (geometry is MultiPolygon multiPolygon)
                 return new byte[GetRequiredBufferSize(multiPolygon, includeSRID)];
+            if (geometry is Tin tin)
+                return new byte[GetRequiredBufferSize(tin, includeSRID)];
             if (geometry is GeometryCollection geometryCollection)
                 return new byte[GetRequiredBufferSize(geometryCollection, includeSRID)];
 
@@ -722,6 +729,8 @@ namespace NetTopologySuite.IO
                 return GetRequiredBufferSize(multiSurface, includeSRID);
             if (geometry is MultiPolygon multiPolygon)
                 return GetRequiredBufferSize(multiPolygon, includeSRID);
+            if (geometry is Tin tin)
+                return GetRequiredBufferSize(tin, includeSRID);
             if (geometry is GeometryCollection geometryCollection)
                 return GetRequiredBufferSize(geometryCollection, includeSRID);
 
@@ -1021,6 +1030,69 @@ namespace NetTopologySuite.IO
                 var surface = (Geometry)multiSurface.GetGeometryN(i);
                 Write(surface, writer, surface.SRID != multiSurface.SRID);
             }
+        }
+
+        /// <summary>
+        /// Write a TIN in its WKB format (ISO/IEC 13249-3 / OGC SFA-CA type 16).
+        /// Each member is nested WKB Polygon (3) only — the Year-1 g4
+        /// <c>polygonText</c> grammar from Ticket 16. The object-model
+        /// <see cref="Geometries.Curves.Triangle"/> is emitted as type 3,
+        /// never type 17. EMPTY is a type-16 header with zero patches.
+        /// Z/M/ZM use the same ISO +1000/+2000/+3000 table as types 8–12
+        /// (writer emits 16 / 1016 / 2016 / 3016; no <c>WKBTinZ|M|ZM</c>
+        /// enum arms). SRID/EWKB follows the same header path as
+        /// MultiPolygon. A GeometryCollection of triangles is written as
+        /// type 7, never rewritten as type 16.
+        /// </summary>
+        /// <param name="tin">The TIN</param>
+        /// <param name="writer">The writer</param>
+        /// <param name="includeSRID">
+        /// A flag indicting if SRID value is of possible interest.
+        /// The value is <c>&amp;&amp;</c>-combineed with <c>HandleSRID</c>.
+        /// </param>
+        private void WriteTin(Tin tin, BinaryWriter writer, bool includeSRID)
+        {
+            WriteHeader(writer, tin, includeSRID);
+            writer.Write(tin.NumGeometries);
+            for (int i = 0; i < tin.NumGeometries; i++)
+            {
+                var triangle = (Geometries.Curves.Triangle)tin.GetGeometryN(i);
+                Write(Year1TinMemberAsPolygon(triangle), writer, triangle.SRID != tin.SRID);
+            }
+        }
+
+        /// <summary>
+        /// Year-1 TIN wire format is nested WKB Polygon (3). Convert the
+        /// object-model <see cref="Geometries.Curves.Triangle"/> to a
+        /// <see cref="Polygon"/> for the existing polygon writer.
+        /// </summary>
+        private static Polygon Year1TinMemberAsPolygon(Geometries.Curves.Triangle triangle)
+        {
+            if (triangle.IsEmpty)
+                return triangle.Factory.CreatePolygon();
+            return triangle.Factory.CreatePolygon(triangle.ExteriorRing);
+        }
+
+        /// <summary>
+        /// Computes the length of a buffer to write the <see cref="Tin"/>
+        /// <paramref name="tin"/> in its WKB format. Members are sized as
+        /// nested WKB Polygon (3).
+        /// </summary>
+        /// <param name="tin">The TIN</param>
+        /// <param name="includeSRID">
+        /// A flag indicting if SRID value is of possible interest.
+        /// The value is <c>&amp;&amp;</c>-combineed with <c>HandleSRID</c>.
+        /// </param>
+        /// <returns>The number of bytes required to store the geometry in its WKB format.</returns>
+        private int GetRequiredBufferSize(Tin tin, bool includeSRID)
+        {
+            int count = GetHeaderSize(includeSRID) + 4;
+            for (int i = 0; i < tin.NumGeometries; i++)
+            {
+                var triangle = (Geometries.Curves.Triangle)tin.GetGeometryN(i);
+                count += GetRequiredBufferSize(Year1TinMemberAsPolygon(triangle), triangle.SRID != tin.SRID);
+            }
+            return count;
         }
 
         /// <summary>
