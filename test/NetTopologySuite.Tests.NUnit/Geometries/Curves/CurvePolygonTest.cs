@@ -200,6 +200,19 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
+        public void Ticket1_ConstructorAcceptsYear1RingTypes()
+        {
+            var ls = Ring((0, 0), (10, 0), (10, 10), (0, 10), (0, 0));
+            var cs = Arc((0, 0), (10, 0), (5, 5), (0, 5), (0, 0));
+            var cc = new CompoundCurve(
+                new Curve[] { Arc((0, 0), (5, 5), (10, 0)), Arc((10, 0), (5, -5), (0, 0)) },
+                _factory);
+            Assert.That(new CurvePolygon(ls, _factory).ExteriorRing, Is.InstanceOf<LinearRing>());
+            Assert.That(new CurvePolygon(cs, _factory).ExteriorRing, Is.InstanceOf<CircularString>());
+            Assert.That(new CurvePolygon(cc, _factory).ExteriorRing, Is.InstanceOf<CompoundCurve>());
+        }
+
+        [Test]
         public void RejectsUnclosedHole()
         {
             var shell = Ring((0, 0), (10, 0), (10, 10), (0, 10), (0, 0));

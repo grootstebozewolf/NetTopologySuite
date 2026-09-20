@@ -68,8 +68,9 @@ namespace NetTopologySuite.Geometries.Curves
         /// <param name="holes">The interior rings, closed <c>Curve</c>s</param>
         /// <param name="factory">The geometry factory</param>
         /// <exception cref="ArgumentException">
-        /// If a ring is not closed, a hole is <c>null</c>, or the shell is empty while
-        /// holes are not.
+        /// If a ring is not a Year-1 type (LineString, CircularString, or
+        /// CompoundCurve with LineString|CircularString members), a ring is not
+        /// closed, a hole is <c>null</c>, or the shell is empty while holes are not.
         /// </exception>
         public CurvePolygon(Curve shell, Curve[] holes, GeometryFactory factory) : base(factory)
         {
@@ -104,11 +105,17 @@ namespace NetTopologySuite.Geometries.Curves
                 // empty -- holes without a shell are unrepresentable in that scheme.
                 throw new ArgumentException("shell is empty but holes are not", nameof(holes));
             }
-            // Intake enforces representability only (ADR-0005 in
-            // NetTopologySuite.Proofs): rings must be CLOSED (the closed half
-            // of ISO/IEC 13249-3 §8.2.1 Desc 2-3) -- an unclosed ring bounds
-            // nothing. The simplicity half of "ring", and every further ISO
-            // "shall", belongs to arc-aware ST_IsValid (tickets 615-g/h).
+            // Year-1 ST_CurvePolygon ring grammar (ISO/IEC 13249-3 §8.2):
+            // rings are LineString | CircularString | CompoundCurve (the last
+            // with contiguous LS|CS members only). Unclosed rings bound
+            // nothing (closed half of §8.2.1 Desc 2-3). The simplicity half
+            // of "ring", and every further ISO "shall", belongs to arc-aware
+            // ST_IsValid (tickets 615-g/h).
+            ValidateYear1Ring(shell, nameof(shell));
+            foreach (var hole in holes)
+            {
+                ValidateYear1Ring(hole, nameof(holes));
+            }
             if (!shell.IsEmpty && !shell.IsClosed)
             {
                 throw new ArgumentException(
@@ -133,6 +140,46 @@ namespace NetTopologySuite.Geometries.Curves
                 if (!curve.IsEmpty) return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Year-1 <c>ST_CurvePolygon</c> ring types (ISO/IEC 13249-3 §8.2):
+        /// <see cref="LineString"/> (including <see cref="LinearRing"/>),
+        /// <see cref="CircularString"/>, or <see cref="CompoundCurve"/> whose
+        /// members are <see cref="LineString"/> | <see cref="CircularString"/>
+        /// only. Nested <see cref="CompoundCurve"/> members are rejected.
+        /// </summary>
+        /// <param name="ring">The ring to check.</param>
+        /// <param name="paramName">The constructor parameter name for exceptions.</param>
+        /// <exception cref="ArgumentException">When the ring is not a Year-1 ring type.</exception>
+        private static void ValidateYear1Ring(Curve ring, string paramName)
+        {
+            if (ring == null || ring.IsEmpty)
+                return;
+            if (ring is LineString || ring is CircularString)
+                return;
+            if (ring is CompoundCurve compound)
+            {
+                foreach (var member in compound.Curves)
+                {
+                    if (member is CompoundCurve)
+                    {
+                        throw new ArgumentException(
+                            "A Year-1 CompoundCurve ring must not contain nested CompoundCurve members " +
+                            "(contiguous LineString | CircularString only).", paramName);
+                    }
+                    if (!(member is LineString || member is CircularString))
+                    {
+                        throw new ArgumentException(
+                            "A Year-1 CompoundCurve ring admits only LineString and CircularString members, got "
+                            + member.GetType().Name + ".", paramName);
+                    }
+                }
+                return;
+            }
+            throw new ArgumentException(
+                "A Year-1 CurvePolygon ring must be a LineString, CircularString or CompoundCurve, got "
+                + ring.GetType().Name + ".", paramName);
         }
 
         /// <inheritdoc cref="Surface{T}.ExteriorRing"/>

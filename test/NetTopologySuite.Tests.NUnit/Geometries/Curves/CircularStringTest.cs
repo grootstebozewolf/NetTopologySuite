@@ -71,6 +71,17 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
+        public void FourControlClosedCircularStringIsNotACircle()
+        {
+            var seq = _factory.CoordinateSequenceFactory.Create(new[] {
+                new Coordinate(0, 0), new Coordinate(1, 1),
+                new Coordinate(2, 0), new Coordinate(0, 0)
+            });
+            var ex = Assert.Throws<ArgumentException>(() => new CircularString(seq, _factory));
+            Assert.That(ex.Message, Does.Contain("4-control"));
+        }
+
+        [Test]
         public void StartAndEndPointsAreFirstAndLast()
         {
             var cs = Make((1, 2), (3, 4), (5, 6));
