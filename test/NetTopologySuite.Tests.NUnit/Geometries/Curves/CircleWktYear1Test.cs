@@ -3,7 +3,9 @@
 //
 // Ticket 19 — Curves.Circle type + Year-1 WKT CIRCLE.
 // ISO/IEC 13249-3 §4.2.7 / §5.1.67: CIRCLE [Z|M|ZM] (point, point, point) | EMPTY.
-// WKB type 18 is Ticket 20 (not this PR). Typed members are Ticket 21.
+// WKB type 18 is Ticket 20. Typed members are Ticket 21
+// (CircleMembersYear1Test). Year-1 CIRCLE I/O is complete
+// (Tickets 19–21; no longer partial).
 
 using System;
 using NetTopologySuite.Geometries;

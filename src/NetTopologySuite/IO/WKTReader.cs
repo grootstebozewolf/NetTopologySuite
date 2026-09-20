@@ -836,8 +836,8 @@ namespace NetTopologySuite.IO
         /// does not yet carry. Not optional extras. Do not call them unknown.
         /// The keywords are the §5.1.67 spellings — GEODESICSTRING,
         /// ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE — never a
-        /// shortened form. CIRCLE is Year-1 (Ticket 19) and is dispatched
-        /// before this predicate.
+        /// shortened form. CIRCLE is Year-1 (Tickets 19–21; no longer
+        /// partial) and is dispatched before this predicate.
         /// </summary>
         private static bool IsUnimplementedSqlMmCurve(string type)
         {
@@ -1096,7 +1096,8 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         /// <summary>
         /// Creates a <c>Circle</c> using the next token in the stream.
         /// Year-1 WKT: <c>CIRCLE [Z|M|ZM] ( point , point , point ) | EMPTY</c>
-        /// (ISO/IEC 13249-3 §4.2.7 / §5.1.67).
+        /// (ISO/IEC 13249-3 §4.2.7 / §5.1.67). Year-1 CIRCLE WKT + WKB 18
+        /// is complete (Tickets 19–21; no longer partial).
         /// </summary>
         private Geometries.Curves.Circle ReadCircleText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags)
         {

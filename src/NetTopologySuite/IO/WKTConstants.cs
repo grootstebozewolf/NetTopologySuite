@@ -71,9 +71,8 @@ namespace NetTopologySuite.IO
         public const string TIN = "TIN";
 
         /// <summary>
-        /// Token text for ISO/IEC 13249-3 §4.2.7 ST_Circle. Year-1 carrier is
-        /// <see cref="Geometries.Curves.Circle"/> (Ticket 19, WKT). WKB type 18
-        /// is Ticket 20.
+        /// Token text for ISO/IEC 13249-3 §4.2.7 ST_Circle. Year-1 CIRCLE
+        /// WKT + WKB 18 is complete (Tickets 19–21; no longer partial).
         /// </summary>
         public const string CIRCLE = "CIRCLE";
         /// <summary>

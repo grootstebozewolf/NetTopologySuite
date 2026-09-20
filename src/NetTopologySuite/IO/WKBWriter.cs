@@ -942,6 +942,7 @@ namespace NetTopologySuite.IO
 
         /// <summary>
         /// Write a Circle in its WKB format (ISO/IEC 13249-3 type 18).
+        /// Year-1 WKB 18 is complete (Tickets 19–21; no longer partial).
         /// The payload is three circumference points, or EMPTY (type 18
         /// with zero points — same empty-body house style as
         /// CircularString). Never demoted to CircularString type 8.

@@ -6,15 +6,19 @@
 //   at grootstebozewolf/jts#1, AI-generated portions are dedicated to
 //   CC0-1.0; human curation falls under the NTS BSD-3-Clause grant.
 //
-//   Assisted-by: Cursor Grok 4.6
+//   Assisted-by: Cursor Grok 4.6; Ticket 21 typed members: Cursor Grok 4.6
 //
-// Status: PRODUCTION (structure + Year-1 WKT + WKB type 18). Typed members
-// (centre / radius accessors) are Ticket 21. Three non-collinear
-// control points define the unique circumcircle (ISO/IEC 13249-3 §4.2.7 /
-// §5.1.67). Length is 2πr over the locus. Envelope is the axis-aligned box
-// of the full circle. The remaining analytic ops match CircularString
-// honesty (fail-closed where CS does). Writer keyword is CIRCLE — never
-// demoted to CIRCULARSTRING.
+// Status: PRODUCTION (structure + Year-1 WKT + WKB type 18 + typed members).
+// Year-1 CIRCLE WKT + WKB 18 is complete (Tickets 19–21; no longer partial).
+// Named Year-2 curves (GEODESICSTRING / ELLIPTICALCURVE / NURBSCURVE /
+// CLOTHOID / SPIRALCURVE) stay omitted. Three non-collinear control points
+// define the unique circumcircle (ISO/IEC 13249-3 §4.2.7 / §5.1.67).
+// GetControlN / GetControlPointN expose the stored controls (not a flatten).
+// Centre and Radius are the planar circumcircle. Length is 2πr over the
+// locus. Envelope is the axis-aligned box of the full circle. Reverse is a
+// point-order reverse of the three controls and stays Circle. The remaining
+// analytic ops match CircularString honesty (fail-closed where CS does).
+// Writer keyword is CIRCLE — never demoted to CIRCULARSTRING.
 
 using System;
 using System.Collections.Generic;
@@ -28,10 +32,21 @@ namespace NetTopologySuite.Geometries.Curves
     /// </summary>
     /// <remarks>
     /// Year-1 WKT is <c>CIRCLE [Z|M|ZM] ( &lt;point&gt; , &lt;point&gt; , &lt;point&gt; ) | EMPTY</c>
-    /// (§4.2.7 / §5.1.67). A non-empty value is closed by definition.
+    /// (§4.2.7 / §5.1.67). Year-1 WKT and WKB type 18 are complete
+    /// (Tickets 19–21; no longer partial). A non-empty value is closed by
+    /// definition. <see cref="GetControlN"/> / <see cref="GetControlPointN"/>
+    /// expose the three circumference controls without flattening.
+    /// <see cref="Centre"/> and <see cref="Radius"/> are the planar (XY)
+    /// circumcircle; a 3D centre is not defined (Z/M on <see cref="Centre"/>
+    /// are <see cref="Coordinate.NullOrdinate"/>). <c>CIRCLE EMPTY</c> has
+    /// <see cref="NumPoints"/> 0; <see cref="Centre"/> and <see cref="Radius"/>
+    /// throw <see cref="InvalidOperationException"/>.
     /// <see cref="Length"/> is <c>2πr</c> over the locus. The envelope is the
-    /// axis-aligned box of the full circle. WKB type 18 is Ticket 20
-    /// (reducer-only Z/M/ZM: 1018 / 2018 / 3018).
+    /// axis-aligned box of the full circle. <see cref="Geometry.Reverse()"/>
+    /// of a non-empty <c>Circle</c> stays this type with the three controls
+    /// reversed (<c>P3, P2, P1</c>) — never a <see cref="CircularString"/>.
+    /// Named Year-2 curves stay omitted. WKB type 18 uses reducer-only Z/M/ZM
+    /// (1018 / 2018 / 3018).
     /// <para/>
     /// A <see cref="CircularString"/> with three controls is a single arc
     /// through those points, not this type. The writer never emits
@@ -88,7 +103,92 @@ namespace NetTopologySuite.Geometries.Curves
         public CoordinateSequence CoordinateSequence => _points;
 
         /// <inheritdoc cref="Geometry.NumPoints"/>
+        /// <remarks>
+        /// A non-empty <c>Circle</c> has exactly three circumference controls.
+        /// <c>CIRCLE EMPTY</c> has zero.
+        /// </remarks>
         public override int NumPoints => _points.Count;
+
+        /// <summary>
+        /// Returns circumference control <paramref name="n"/> as a
+        /// <see cref="Coordinate"/> (0-based). This is the stored control,
+        /// not a linearized dump.
+        /// </summary>
+        /// <param name="n">Control index: 0, 1 or 2 on a non-empty circle.</param>
+        /// <returns>The stored circumference control.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// When <paramref name="n"/> is outside <c>0..NumPoints-1</c>
+        /// (including any index on <c>CIRCLE EMPTY</c>).
+        /// </exception>
+        public Coordinate GetControlN(int n)
+        {
+            if (n < 0 || n >= _points.Count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(n), n,
+                    "Circle control index must be in 0..NumPoints-1. CIRCLE EMPTY has no controls.");
+            }
+            return _points.GetCoordinate(n);
+        }
+
+        /// <summary>
+        /// Returns circumference control <paramref name="n"/> as a
+        /// <see cref="Point"/> created by this geometry's factory.
+        /// </summary>
+        /// <param name="n">Control index: 0, 1 or 2 on a non-empty circle.</param>
+        /// <returns>A <see cref="Point"/> at the stored circumference control.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// When <paramref name="n"/> is outside <c>0..NumPoints-1</c>
+        /// (including any index on <c>CIRCLE EMPTY</c>).
+        /// </exception>
+        public Point GetControlPointN(int n)
+        {
+            return Factory.CreatePoint(GetControlN(n));
+        }
+
+        /// <summary>
+        /// The planar (XY) circumcentre of the three circumference controls.
+        /// </summary>
+        /// <remarks>
+        /// Exact XY via the planar circumcircle of the three controls
+        /// (<c>Triangle.Circumcentre</c> over XY).
+        /// A 3D centre is not defined: Z and M on the returned coordinate are
+        /// <see cref="Coordinate.NullOrdinate"/> even when the controls carry
+        /// Z/M (CircularString locus honesty — metrics are planar). Read Z/M
+        /// on the controls via <see cref="GetControlN"/>.
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">
+        /// When this value is empty (<c>CIRCLE EMPTY</c> has no circumcircle).
+        /// </exception>
+        public Coordinate Centre
+        {
+            get
+            {
+                if (!TryGetCircumcircle(out var centre, out _))
+                    throw new InvalidOperationException("Centre is undefined for CIRCLE EMPTY.");
+                return centre;
+            }
+        }
+
+        /// <summary>
+        /// The planar (XY) circumradius of the three circumference controls.
+        /// </summary>
+        /// <remarks>
+        /// Exact XY distance from <see cref="Centre"/> to any control. A 3D
+        /// radius is not defined; Z/M on the controls do not enter the
+        /// answer (CircularString locus honesty).
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">
+        /// When this value is empty (<c>CIRCLE EMPTY</c> has no circumcircle).
+        /// </exception>
+        public double Radius
+        {
+            get
+            {
+                if (!TryGetCircumcircle(out _, out double radius))
+                    throw new InvalidOperationException("Radius is undefined for CIRCLE EMPTY.");
+                return radius;
+            }
+        }
 
         /// <inheritdoc cref="Geometry.IsEmpty"/>
         public override bool IsEmpty => _points.Count == 0;
@@ -244,7 +344,11 @@ namespace NetTopologySuite.Geometries.Curves
         /// <inheritdoc/>
         public override void Apply(IGeometryComponentFilter filter) => filter.Filter(this);
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Deep-copies this value as a <see cref="Circle"/> of the same three
+        /// circumference controls (or empty). Never demotes to
+        /// <see cref="CircularString"/>.
+        /// </summary>
         protected override Geometry CopyInternal() => new Circle(_points.Copy(), Factory);
 
         /// <summary>
@@ -273,7 +377,13 @@ namespace NetTopologySuite.Geometries.Curves
             }
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Reverses the three circumference controls
+        /// (<c>P1, P2, P3</c> → <c>P3, P2, P1</c>). The result is still a
+        /// <see cref="Circle"/> of the same circumcircle; a full circle's
+        /// reverse is a point-order reverse, never a demotion to
+        /// <see cref="CircularString"/>. Empty stays empty.
+        /// </summary>
         protected override Geometry ReverseInternal()
         {
             var rev = _points.Copy();
