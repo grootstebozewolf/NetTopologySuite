@@ -1018,7 +1018,7 @@ namespace NetTopologySuite.IO
             writer.Write(multiSurface.NumGeometries);
             for (int i = 0; i < multiSurface.NumGeometries; i++)
             {
-                var surface = multiSurface.GetGeometryN(i);
+                var surface = (Geometry)multiSurface.GetGeometryN(i);
                 Write(surface, writer, surface.SRID != multiSurface.SRID);
             }
         }

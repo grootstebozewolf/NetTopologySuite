@@ -4,7 +4,8 @@
 // Ticket 8 — Year-1 ST_MultiSurface WKB type 12 read/write (ISO/IEC 13249-3).
 // Members: nested WKB Polygon (3) | CurvePolygon (10).
 // Reuses Ticket 7 Year-1 member lock and Ticket 2 CurvePolygon WKB path;
-// does not remint WKT grammar. Ticket 9 typed-members are out of scope.
+// does not remint WKT grammar. Ticket 9: Year-1 WKB 12 is complete (no
+// longer "partial"); typed members stay in MultiSurfaceMembersYear1Test.
 
 using System;
 using NetTopologySuite.Geometries;
