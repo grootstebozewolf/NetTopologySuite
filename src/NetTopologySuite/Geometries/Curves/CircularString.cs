@@ -90,9 +90,9 @@ namespace NetTopologySuite.Geometries.Curves
                         && points.GetCoordinate(0).Equals2D(points.GetCoordinate(3)))
                     {
                         throw new ArgumentException(
-                            "A 4-control CircularString (A,B,C,A) is not a circle: Year-1 " +
-                            "requires an odd control count (2n + 1). A full circle is the 5-token " +
-                            "form first=last; CIRCULARSTRING(A,B,A) is a degenerate window, not a circle.",
+                            "A 4-control CircularString (A,B,C,A) is not a circle: a CircularString " +
+                            "has an odd control count (2n + 1). A full circle is the 5-point form " +
+                            "first=last; CIRCULARSTRING(A,B,A) is a degenerate window, not a circle.",
                             nameof(points));
                     }
                     throw new ArgumentException(

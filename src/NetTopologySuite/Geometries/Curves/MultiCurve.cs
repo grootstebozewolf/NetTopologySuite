@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Status: PRODUCTION (structure + Year-1 WKT + WKB type 11 + §4.2.25 typed members).
-// Year-1 WKB 11 is complete (Tickets 4–6; no longer partial). Year-2 member
-// names (CIRCLE, GEODESIC, ELLIPSE, NURBS, CLOTHOID, SPIRAL) remain omitted.
+// Year-1 WKB 11 is complete (Tickets 4–6; no longer partial). The six ISO
+// §5.1.67 curve names NTS has no carrier for (CIRCLE, GEODESICSTRING,
+// ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE) remain omitted.
 // Members are Curve (LS|CS|CC), never collapsed to LineString (F-MC / §4.2.25).
 // IsSimple and IsValid are arc-aware (ISO/IEC 13249-3 §10.3.1 Desc 4 /
 // §10.1.1 Desc 10; NetTopologySuite.Proofs #615 ticket 615-h rung 4, #639),
@@ -27,8 +28,9 @@ namespace NetTopologySuite.Geometries.Curves
     /// <see cref="CompoundCurve"/> to a flat <see cref="LineString"/> (the
     /// F-MC structural contract; ISO/IEC 13249-3 §4.2.25 <c>ST_GeometryN</c> /
     /// <c>ST_NumGeometries</c>). Year-1 WKT and WKB type 11 are complete.
-    /// Year-2 member names (<c>CIRCLE</c>, <c>GEODESIC</c>, <c>ELLIPSE</c>,
-    /// <c>NURBS</c>, <c>CLOTHOID</c>, <c>SPIRAL</c>) remain omitted.
+    /// The six ISO/IEC 13249-3 §5.1.67 curve names NTS has no carrier for
+    /// (<c>CIRCLE</c>, <c>GEODESICSTRING</c>, <c>ELLIPTICALCURVE</c>,
+    /// <c>NURBSCURVE</c>, <c>CLOTHOID</c>, <c>SPIRALCURVE</c>) remain omitted.
     /// <para/>
     /// The remaining analytic ops fail closed with
     /// <see cref="NotSupportedException"/> until arc-aware implementations land.

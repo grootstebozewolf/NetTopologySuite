@@ -779,9 +779,10 @@ namespace NetTopologySuite.IO
                 returned = ReadTriangleText(tokens, factory, ordinateFlags);
             else if (IsTypeName(tokens, type, WKTConstants.TIN))
                 returned = ReadTinText(tokens, factory, ordinateFlags);
+            else if (IsUnimplementedSqlMmCurve(type))
+                throw SqlMmUnimplemented(type);
             else
             {
-                RejectYear2CurveKeyword(type);
                 RejectNonYear1MultiCurveKeyword(type);
                 throw new ParseException("Unknown type: " + type);
             }
@@ -809,6 +810,46 @@ namespace NetTopologySuite.IO
             }
     
             return true;
+        }
+
+        /// <summary>
+        /// True when <paramref name="type"/> is <paramref name="typeName"/>
+        /// with an optional Z / M / ZM suffix. Unlike <see cref="IsTypeName"/>,
+        /// a longer leftover (CIRCULARSTRING vs CIRCLE) is not an error — it
+        /// is simply not a match.
+        /// </summary>
+        private static bool HasTypeNameWithDimSuffix(string type, string typeName)
+        {
+            if (type == null || !type.StartsWith(typeName, StringComparison.OrdinalIgnoreCase))
+                return false;
+            string modifiers = type.Substring(typeName.Length);
+            return modifiers.Length == 0
+                || modifiers.Equals(WKTConstants.Z, StringComparison.OrdinalIgnoreCase)
+                || modifiers.Equals(WKTConstants.M, StringComparison.OrdinalIgnoreCase)
+                || modifiers.Equals(WKTConstants.ZM, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Instantiable ST_Curve subtypes in ISO/IEC 13249-3 §4.2.1 that NTS
+        /// does not yet carry. Not optional extras. Do not call them unknown.
+        /// The keywords are the §5.1.67 spellings — CIRCLE, GEODESICSTRING,
+        /// ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE — never a
+        /// shortened form.
+        /// </summary>
+        private static bool IsUnimplementedSqlMmCurve(string type)
+        {
+            return HasTypeNameWithDimSuffix(type, WKTConstants.CLOTHOID)
+                || HasTypeNameWithDimSuffix(type, WKTConstants.CIRCLE)
+                || HasTypeNameWithDimSuffix(type, WKTConstants.GEODESICSTRING)
+                || HasTypeNameWithDimSuffix(type, WKTConstants.ELLIPTICALCURVE)
+                || HasTypeNameWithDimSuffix(type, WKTConstants.NURBSCURVE)
+                || HasTypeNameWithDimSuffix(type, WKTConstants.SPIRALCURVE);
+        }
+
+        private static ParseException SqlMmUnimplemented(string type)
+        {
+            return new ParseException(
+                "SQL/MM type is not optional (ISO/IEC 13249-3 §4.2.1) and is not implemented: " + type);
         }
 
 /// <summary>
@@ -1051,20 +1092,33 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         }
 
         /// <summary>
-        /// Creates a <c>Curve</c> using the next token in the stream: either a bare
+        /// Creates a <c>Curve</c> using the next token in the stream: a bare
         /// coordinate list (a <c>LineString</c>), a tagged <c>CIRCULARSTRING</c>, or a
-        /// tagged <c>COMPOUNDCURVE</c> -- the alternatives of the ISO/IEC 13249-3
-        /// §5.1.67 <c>&lt;curve text&gt;</c> / g4 <c>curveMember</c> productions
-        /// (Year-1 ST_CurvePolygon rings and ST_MultiCurve members).
+        /// tagged <c>COMPOUNDCURVE</c>.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// ISO/IEC 13249-3 §5.1.67 gives <c>&lt;curve text&gt;</c> and
+        /// <c>&lt;ring text&gt;</c> the same NINE alternatives:
+        /// <c>&lt;linestring text body&gt;</c> plus the circularstring, circle,
+        /// geodesic, elliptical, nurbs, clothoid, spiral and compoundcurve text
+        /// representations. NTS Year-1 carries three of them. The other six are
+        /// instantiable ISO types NTS has no carrier for
+        /// (<see cref="IsUnimplementedSqlMmCurve"/>): they are named and refused,
+        /// never flattened. That is an NTS scope limit, not an ISO one.
+        /// </para>
+        /// <para>
         /// A nested <c>COMPOUNDCURVE</c> component of a standalone
-        /// <c>CompoundCurve</c> is still spliced flat by the constructor. When
-        /// <paramref name="year1MemberLock"/> is <c>true</c>, nested
-        /// <c>COMPOUNDCURVE</c> is rejected (Year-1 CompoundCurve members are
-        /// contiguous <c>LineString</c> | <c>CircularString</c> only).
-        /// Year-2 keywords (CIRCLE, GEODESIC, ELLIPSE, NURBS, CLOTHOID, SPIRAL)
-        /// are rejected with a parse error and never flattened.
+        /// <c>CompoundCurve</c> is spliced flat by the constructor. When
+        /// <paramref name="year1MemberLock"/> is <c>true</c> it is refused
+        /// instead -- §5.1.67 admits the nesting, NTS Year-1 does not.
+        /// </para>
+        /// <para>
+        /// DEVIATION (NetTopologySuite.Proofs #615, ticket 615-i): §5.1.67 admits
+        /// <c>&lt;linestring text body&gt;</c> (bare) and not a tagged
+        /// <c>LINESTRING</c>; a tagged one is accepted here for GEOS / PostGIS
+        /// interop, and the writer emits the conformant bare form.
+        /// </para>
         /// </remarks>
         /// <param name="tokens">
         ///   Tokenizer over a stream of text in Well-known Text
@@ -1073,14 +1127,13 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         /// <param name="factory">The factory to create the geometry</param>
         /// <param name="ordinateFlags">A flag indicating the ordinates to expect.</param>
         /// <param name="year1MemberLock">
-        ///   <c>true</c> when this production is a Year-1 <c>CURVEPOLYGON</c>
+        ///   <c>true</c> when this production is an NTS Year-1 <c>CURVEPOLYGON</c>
         ///   ring or <c>MULTICURVE</c> member (no nested <c>COMPOUNDCURVE</c>).
         /// </param>
         /// <returns>A <c>Curve</c> specified by the next token in the stream.</returns>
         private Curve ReadCurveText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags, bool year1MemberLock = false)
         {
             string current = LookAheadWord(tokens);
-            RejectYear2CurveKeyword(current);
             RejectNonYear1MultiCurveKeyword(current);
 
             if (current.Equals(WKTConstants.EMPTY) || current.Equals("("))
@@ -1119,11 +1172,15 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
                 return ReadCompoundCurveText(tokens, factory, ordinateFlags, year1Members: year1MemberLock);
             }
 
+            if (IsUnimplementedSqlMmCurve(current))
+                throw SqlMmUnimplemented(current);
+
             if (year1MemberLock)
             {
                 throw new ParseException(
-                    "Unexpected Year-1 curve member token '" + current + "': Year-1 ST_CurvePolygon ring / ST_MultiCurve member production " +
-                    "(ISO/IEC 13249-3 §8.2 / §5.1.67 g4 curveMember) is lineStringText | circularStringGeometry | compoundCurveGeometry only.");
+                    "Unexpected Year-1 curve member token '" + current + "': NTS Year-1 carries three of the nine " +
+                    "ISO/IEC 13249-3 §5.1.67 alternatives -- lineStringText, circularStringGeometry " +
+                    "and compoundCurveGeometry.");
             }
 
             throw new ParseException("Unexpected token: " + current);
@@ -1219,10 +1276,10 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
 
         /// <summary>
         /// Creates a <c>MultiCurve</c> (GEOS / SQL/MM) using the next token in the stream.
-        /// Year-1 member production (ISO/IEC 13249-3 §5.1.67 g4 <c>curveMember</c>,
-        /// reused from Ticket 1 <see cref="ReadCurveText"/>):
+        /// NTS Year-1 member production (reused from Ticket 1 <see cref="ReadCurveText"/>):
+        /// three of the nine ISO/IEC 13249-3 §5.1.67 alternatives —
         /// <c>lineStringText</c> | <c>circularStringGeometry</c> |
-        /// <c>compoundCurveGeometry</c> only.
+        /// <c>compoundCurveGeometry</c>. The narrowing is NTS scope, not ISO.
         /// </summary>
         private Geometries.Curves.MultiCurve ReadMultiCurveText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags)
         {
@@ -1290,10 +1347,11 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         /// <param name="factory">The factory to create the geometry</param>
         /// <param name="ordinateFlags">A flag indicating the ordinates to expect.</param>
         /// <param name="year1Members">
-        ///   When <c>true</c>, this <c>COMPOUNDCURVE</c> is a Year-1
-        ///   <c>CURVEPOLYGON</c> ring or <c>MULTICURVE</c> member: members
-        ///   must be <c>LineString</c> or <c>CircularString</c> only (nested
-        ///   <c>COMPOUNDCURVE</c> is rejected, not flattened).
+        ///   When <c>true</c>, this <c>COMPOUNDCURVE</c> is an NTS Year-1
+        ///   <c>CURVEPOLYGON</c> ring or <c>MULTICURVE</c> member: members are
+        ///   <c>LineString</c> or <c>CircularString</c>, and a nested
+        ///   <c>COMPOUNDCURVE</c> -- which ISO/IEC 13249-3 §5.1.67 does admit --
+        ///   is refused, not flattened.
         /// </param>
         /// <returns>A <c>CompoundCurve</c> specified by the next token in the stream.</returns>
         private Geometries.Curves.CompoundCurve ReadCompoundCurveText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags, bool year1Members = false)
@@ -1305,16 +1363,16 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
             var curves = new List<Curve>();
             do
             {
-                if (year1Members)
+                if (year1Members && HasTypeNameWithDimSuffix(LookAheadWord(tokens), WKTConstants.COMPOUNDCURVE))
                 {
-                    string member = LookAheadWord(tokens);
-                    RejectYear2CurveKeyword(member);
-                    if (MatchesTypeWord(member, WKTConstants.COMPOUNDCURVE))
-                    {
-                        throw new ParseException(
-                            "Nested COMPOUNDCURVE is not a Year-1 CompoundCurve member " +
-                            "(ISO/IEC 13249-3: Year-1 CompoundCurve members are contiguous LineString | CircularString only).");
-                    }
+                    // §5.1.67 admits a nested <compoundcurve text representation>;
+                    // NTS Year-1 does not. Refused rather than spliced flat, so
+                    // the limit is visible on both CurvePolygon rings and
+                    // MultiCurve members.
+                    throw new ParseException(
+                        "Nested COMPOUNDCURVE is out of NTS Year-1 scope: a Year-1 CompoundCurve " +
+                        "ring or MultiCurve member is contiguous LineString | CircularString members. " +
+                        "ISO/IEC 13249-3 §5.1.67 admits the nesting; NTS Year-1 refuses it rather than flattening it away.");
                 }
                 var curve = ReadCurveText(tokens, factory, ordinateFlags);
                 curves.Add(curve);
@@ -1327,9 +1385,11 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
 
         /// <summary>
         /// Creates a <c>CurvePolygon</c> using the next token in the stream.
-        /// Year-1 ring production (ISO/IEC 13249-3 §8.2 / §5.1.67 g4):
-        /// <c>lineStringText</c> | <c>circularStringGeometry</c> |
-        /// <c>compoundCurveGeometry</c> only.
+        /// NTS Year-1 reads three of the nine ISO/IEC 13249-3 §5.1.67
+        /// <c>&lt;ring text&gt;</c> alternatives: <c>&lt;linestring text body&gt;</c>,
+        /// <c>&lt;circularstring text representation&gt;</c> and
+        /// <c>&lt;compoundcurve text representation&gt;</c>. §8.2.1 Desc 2-3 types a
+        /// ring as any <c>ST_Curve</c>; the narrowing is NTS scope, not ISO.
         /// </summary>
         /// <param name="tokens">
         ///   Tokenizer over a stream of text in Well-known Text
@@ -1357,16 +1417,6 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         }
 
         /// <summary>
-        /// Year-2 curve keywords that are not admitted as Year-1
-        /// <c>ST_CurvePolygon</c> rings or <c>ST_MultiCurve</c> members
-        /// (ISO/IEC 13249-3 §8.2 / §5.1.67).
-        /// </summary>
-        private static readonly string[] Year2CurveKeywords =
-        {
-            "CIRCLE", "GEODESIC", "ELLIPSE", "NURBS", "CLOTHOID", "SPIRAL"
-        };
-
-        /// <summary>
         /// Collection keywords that are not Year-1 <c>ST_MultiCurve</c>
         /// (<c>MULTICURVE</c> with LS|CS|CC members).
         /// </summary>
@@ -1374,42 +1424,6 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         {
             "MULTICIRCULARSTRING", "MULTICOMPOUNDCURVE"
         };
-
-        /// <summary>
-        /// Returns <c>true</c> when <paramref name="word"/> is <paramref name="typeName"/>
-        /// optionally followed by a <c>Z</c>, <c>M</c> or <c>ZM</c> suffix.
-        /// </summary>
-        private static bool MatchesTypeWord(string word, string typeName)
-        {
-            if (word == null || !word.StartsWith(typeName, StringComparison.OrdinalIgnoreCase))
-                return false;
-            string suffix = word.Substring(typeName.Length);
-            return suffix.Length == 0
-                || suffix.Equals(WKTConstants.Z, StringComparison.OrdinalIgnoreCase)
-                || suffix.Equals(WKTConstants.M, StringComparison.OrdinalIgnoreCase)
-                || suffix.Equals(WKTConstants.ZM, StringComparison.OrdinalIgnoreCase);
-        }
-
-        /// <summary>
-        /// Rejects Year-2 curve keywords with a parse error. Never silently
-        /// flattened to a Year-1 ring or MultiCurve member.
-        /// </summary>
-        /// <param name="word">The lookahead type word.</param>
-        /// <exception cref="ParseException">When <paramref name="word"/> is a Year-2 curve keyword.</exception>
-        private static void RejectYear2CurveKeyword(string word)
-        {
-            if (word == null)
-                return;
-            foreach (string keyword in Year2CurveKeywords)
-            {
-                if (!MatchesTypeWord(word, keyword))
-                    continue;
-                throw new ParseException(
-                    keyword + " is a Year-2 curve type and is not admitted as a Year-1 ST_CurvePolygon ring or ST_MultiCurve member " +
-                    "(ISO/IEC 13249-3 §8.2 / §5.1.67: production is lineStringText | circularStringGeometry | compoundCurveGeometry only). " +
-                    "Year-2 keywords are rejected on read and are never silently flattened.");
-            }
-        }
 
         /// <summary>
         /// Rejects <c>MULTICIRCULARSTRING</c> / <c>MULTICOMPOUNDCURVE</c>.
@@ -1423,7 +1437,7 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
                 return;
             foreach (string keyword in NonYear1MultiCurveKeywords)
             {
-                if (!MatchesTypeWord(word, keyword))
+                if (!HasTypeNameWithDimSuffix(word, keyword))
                     continue;
                 throw new ParseException(
                     keyword + " is not a Year-1 collection keyword. SQL/MM ST_MultiCurve is MULTICURVE " +
