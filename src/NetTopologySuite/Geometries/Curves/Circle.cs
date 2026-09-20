@@ -8,8 +8,8 @@
 //
 //   Assisted-by: Cursor Grok 4.6
 //
-// Status: PRODUCTION (structure + Year-1 WKT). WKB type 18 is Ticket 20;
-// typed members (centre / radius accessors) are Ticket 21. Three non-collinear
+// Status: PRODUCTION (structure + Year-1 WKT + WKB type 18). Typed members
+// (centre / radius accessors) are Ticket 21. Three non-collinear
 // control points define the unique circumcircle (ISO/IEC 13249-3 §4.2.7 /
 // §5.1.67). Length is 2πr over the locus. Envelope is the axis-aligned box
 // of the full circle. The remaining analytic ops match CircularString
@@ -30,11 +30,12 @@ namespace NetTopologySuite.Geometries.Curves
     /// Year-1 WKT is <c>CIRCLE [Z|M|ZM] ( &lt;point&gt; , &lt;point&gt; , &lt;point&gt; ) | EMPTY</c>
     /// (§4.2.7 / §5.1.67). A non-empty value is closed by definition.
     /// <see cref="Length"/> is <c>2πr</c> over the locus. The envelope is the
-    /// axis-aligned box of the full circle. WKB type 18 is Ticket 20.
+    /// axis-aligned box of the full circle. WKB type 18 is Ticket 20
+    /// (reducer-only Z/M/ZM: 1018 / 2018 / 3018).
     /// <para/>
     /// A <see cref="CircularString"/> with three controls is a single arc
     /// through those points, not this type. The writer never emits
-    /// <c>CIRCULARSTRING</c> for a <c>Circle</c>.
+    /// <c>CIRCULARSTRING</c> or WKB type 8 for a <c>Circle</c>.
     /// </remarks>
     [Serializable]
     public class Circle : Curve, ILinearizable<LineString>

@@ -240,6 +240,8 @@ namespace NetTopologySuite.IO
                         return ReadMultiSurface(reader, cs, srid);
                     case WKBGeometryTypes.WKBTin:
                         return ReadTin(reader, cs, srid);
+                    case WKBGeometryTypes.WKBCircle:
+                        return ReadCircle(reader, cs, srid);
                     default:
                         throw new ArgumentException("Geometry type not recognized. GeometryCode: " + geometryType);
                 }
@@ -688,6 +690,9 @@ namespace NetTopologySuite.IO
                     case WKBGeometryTypes.WKBTin:
                         geometries[i] = ReadTin(reader, cs2, srid2);
                         break;
+                    case WKBGeometryTypes.WKBCircle:
+                        geometries[i] = ReadCircle(reader, cs2, srid2);
+                        break;
 
                     default:
                         throw new ArgumentException("Should never reach here!");
@@ -760,6 +765,28 @@ namespace NetTopologySuite.IO
         }
 
         /// <summary>
+        /// Reads an ISO/IEC 13249-3 Circle (WKB type 18).
+        /// The payload is three circumference points, or EMPTY (type 18 with
+        /// zero points — same empty-body house style as CircularString).
+        /// Collinear three-point intake is refused by
+        /// <see cref="Circle"/> (ISO/IEC 13249-3 §4.2.7). Z/M/ZM use the
+        /// same ISO +1000/+2000/+3000 table as types 8–16 (recovered as
+        /// type 18 by the <c>(type &amp; 0xffff) % 1000</c> reducer only;
+        /// there are no <c>WKBCircleZ|M|ZM</c> enum arms).
+        /// </summary>
+        /// <param name="reader">The reader</param>
+        /// <param name="cs">The coordinate system</param>
+        /// <param name="srid">The spatial reference id for the geometry.</param>
+        /// <returns>A <see cref="Circle"/> geometry</returns>
+        protected Geometry ReadCircle(BinaryReader reader, CoordinateSystem cs, int srid)
+        {
+            var factory = _geometryServices.CreateGeometryFactory(_precisionModel, srid, _sequenceFactory);
+            int numPoints = ReadNumField(reader, FieldNumCoords, ReasonableNumCoordinates(reader.BaseStream, cs));
+            var sequence = ReadCoordinateSequence(reader, numPoints, cs);
+            return new Circle(sequence, factory);
+        }
+
+        /// <summary>
         /// Reads a SQL/MM CompoundCurve (GEOS/ISO WKB type 9).
         /// Nested <see cref="CompoundCurve"/> members are accepted and flattened
         /// (ADR-0005). Year-1 <see cref="CurvePolygon"/> rings and
@@ -803,7 +830,8 @@ namespace NetTopologySuite.IO
         /// <summary>
         /// Reads a SQL/MM CurvePolygon (GEOS/ISO WKB type 10).
         /// Year-1 rings are nested WKB LineString (2) | CircularString (8) |
-        /// CompoundCurve (9) only (ISO/IEC 13249-3 §8.2 / Ticket 1 grammar).
+        /// CompoundCurve (9) | Circle (18) (ISO/IEC 13249-3 §8.2 / Ticket 1
+        /// grammar; Circle is Ticket 19 object-model / Ticket 20 WKB).
         /// Z/M/ZM use the same ISO +1000/+2000/+3000 table as types 8–9
         /// (recovered as type 10).
         /// </summary>
@@ -828,10 +856,11 @@ namespace NetTopologySuite.IO
         /// <summary>
         /// Reads a SQL/MM MultiCurve (GEOS/ISO WKB type 11).
         /// Year-1 members are nested WKB LineString (2) | CircularString (8) |
-        /// CompoundCurve (9) only (ISO/IEC 13249-3 §5.1.67 g4 <c>curveMember</c>,
-        /// Ticket 4 WKT lock). Nested CompoundCurve inside a CompoundCurve
-        /// member is rejected, not flattened (ADR-0005 applies only to
-        /// standalone CompoundCurve). Z/M/ZM use the same ISO
+        /// CompoundCurve (9) | Circle (18) (ISO/IEC 13249-3 §5.1.67 g4
+        /// <c>curveMember</c>, Ticket 4 WKT lock; Circle is Ticket 19
+        /// object-model / Ticket 20 WKB). Nested CompoundCurve inside a
+        /// CompoundCurve member is rejected, not flattened (ADR-0005 applies
+        /// only to standalone CompoundCurve). Z/M/ZM use the same ISO
         /// +1000/+2000/+3000 table as types 8–10 (recovered as type 11).
         /// </summary>
         /// <param name="reader">The reader</param>
@@ -854,8 +883,9 @@ namespace NetTopologySuite.IO
         /// only (ISO/IEC 13249-3 <c>surfaceMember</c> = polygonText |
         /// curvePolygonGeometry, Ticket 7 WKT lock). CurvePolygon members
         /// reuse <see cref="ReadCurvePolygon"/>, so their rings obey the
-        /// Year-1 LineString (2) | CircularString (8) | CompoundCurve (9)
-        /// lock (Ticket 2). Omitted surface types (TRIANGLE, TIN,
+        /// Year-1 LineString (2) | CircularString (8) | CompoundCurve (9) |
+        /// Circle (18) lock (Ticket 2 / Ticket 20). Circle is not itself a
+        /// surface member. Omitted surface types (TRIANGLE, TIN,
         /// POLYHEDRALSURFACE, COMPOUNDSURFACE) and Year-2 curve codes are
         /// refused by type code — WKB has no keyword list. Z/M/ZM use the
         /// same ISO +1000/+2000/+3000 table as types 8–11 (recovered as
@@ -883,7 +913,7 @@ namespace NetTopologySuite.IO
         /// WKB Polygon (3) only (ISO/IEC 13249-3 g4 <c>polygonText</c>,
         /// Ticket 16 WKT lock). Each Polygon is wrapped as the existing
         /// <see cref="Geometries.Curves.Triangle"/> (no second Triangle
-        /// type). Nested Triangle (17), PolyhedralSurface (15), type 18
+        /// type). Nested Triangle (17), PolyhedralSurface (15), Circle (18)
         /// and any other non-3 code are refused by numeric type — WKB has
         /// no keyword list. EMPTY is a type-16 header with zero patches.
         /// Z/M/ZM use the same ISO +1000/+2000/+3000 table as types 8–12
@@ -937,16 +967,17 @@ namespace NetTopologySuite.IO
 
         /// <summary>
         /// Reads a Year-1 <see cref="CurvePolygon"/> ring: nested WKB
-        /// LineString (2) | CircularString (8) | CompoundCurve (9) only.
-        /// Any other nested type code is rejected. ISO Z/M/ZM variants of
-        /// types 8–9 arrive as 8/9 after <see cref="ReadGeometryType"/>
-        /// (<c>% 1000</c>), matching the table used for those types.
+        /// LineString (2) | CircularString (8) | CompoundCurve (9) |
+        /// Circle (18). Any other nested type code is rejected. ISO
+        /// Z/M/ZM variants of types 8 / 9 / 18 arrive as 8 / 9 / 18 after
+        /// <see cref="ReadGeometryType"/> (<c>% 1000</c>), matching the
+        /// table used for those types.
         /// </summary>
         /// <param name="reader">The reader</param>
         /// <param name="srid">The spatial reference id for the geometry.</param>
         /// <returns>A Year-1 ring curve</returns>
         /// <exception cref="ArgumentException">
-        /// When the nested type is not 2, 8 or 9.
+        /// When the nested type is not 2, 8, 9 or 18.
         /// </exception>
         private Curve ReadCurvePolygonRing(BinaryReader reader, int srid)
         {
@@ -965,11 +996,13 @@ namespace NetTopologySuite.IO
                     return (Curve)ReadCircularString(reader, cs2, srid2);
                 case WKBGeometryTypes.WKBCompoundCurve:
                     return ReadCompoundCurve(reader, cs2, srid2, year1Members: true);
+                case WKBGeometryTypes.WKBCircle:
+                    return (Curve)ReadCircle(reader, cs2, srid2);
                 default:
                     throw new ArgumentException(
                         "Unexpected CurvePolygon ring WKB type " + (int)geometryType +
                         ": Year-1 ST_CurvePolygon ring production " +
-                        "(ISO/IEC 13249-3 §8.2) is LineString (2) | CircularString (8) | CompoundCurve (9) only.");
+                        "(ISO/IEC 13249-3 §8.2) is LineString (2) | CircularString (8) | CompoundCurve (9) | Circle (18) only.");
             }
         }
 
@@ -979,7 +1012,7 @@ namespace NetTopologySuite.IO
         /// <c>surfaceMember</c> = polygonText | curvePolygonGeometry,
         /// Ticket 7). Any other nested type code is rejected, including
         /// MultiPolygon (6), MultiCurve (11), MultiSurface (12),
-        /// PolyhedralSurface (15), TIN (16), Triangle (17) and type 18.
+        /// PolyhedralSurface (15), TIN (16), Triangle (17) and Circle (18).
         /// CurvePolygon members reuse <see cref="ReadCurvePolygon"/> so
         /// their rings obey the Year-1 LS|CS|CC lock. Nested CompoundCurve
         /// inside a CurvePolygon ring is rejected (Ticket 2).
@@ -1015,17 +1048,18 @@ namespace NetTopologySuite.IO
 
         /// <summary>
         /// Reads a Year-1 <see cref="MultiCurve"/> member: nested WKB
-        /// LineString (2) | CircularString (8) | CompoundCurve (9) only
-        /// (ISO/IEC 13249-3 §5.1.67 g4 <c>curveMember</c>, Ticket 4).
-        /// Any other nested type code is rejected, including CurvePolygon
-        /// (10), MultiSurface (12) and type 18. Nested CompoundCurve
-        /// inside a CompoundCurve member is rejected (no ADR-0005 flatten).
+        /// LineString (2) | CircularString (8) | CompoundCurve (9) |
+        /// Circle (18) (ISO/IEC 13249-3 §5.1.67 g4 <c>curveMember</c>,
+        /// Ticket 4 / Ticket 20). Any other nested type code is rejected,
+        /// including CurvePolygon (10) and MultiSurface (12). Nested
+        /// CompoundCurve inside a CompoundCurve member is rejected (no
+        /// ADR-0005 flatten).
         /// </summary>
         /// <param name="reader">The reader</param>
         /// <param name="srid">The spatial reference id for the geometry.</param>
         /// <returns>A Year-1 MultiCurve member</returns>
         /// <exception cref="ArgumentException">
-        /// When the nested type is not 2, 8 or 9.
+        /// When the nested type is not 2, 8, 9 or 18.
         /// </exception>
         private Curve ReadMultiCurveMember(BinaryReader reader, int srid)
         {
@@ -1044,11 +1078,13 @@ namespace NetTopologySuite.IO
                     return (Curve)ReadCircularString(reader, cs2, srid2);
                 case WKBGeometryTypes.WKBCompoundCurve:
                     return ReadCompoundCurve(reader, cs2, srid2, year1Members: true);
+                case WKBGeometryTypes.WKBCircle:
+                    return (Curve)ReadCircle(reader, cs2, srid2);
                 default:
                     throw new ArgumentException(
                         "Unexpected MultiCurve member WKB type " + (int)geometryType +
                         ": Year-1 ST_MultiCurve member production " +
-                        "(ISO/IEC 13249-3 §5.1.67 g4 curveMember) is LineString (2) | CircularString (8) | CompoundCurve (9) only.");
+                        "(ISO/IEC 13249-3 §5.1.67 g4 curveMember) is LineString (2) | CircularString (8) | CompoundCurve (9) | Circle (18) only.");
             }
         }
 
@@ -1058,7 +1094,7 @@ namespace NetTopologySuite.IO
         /// reduced type must be 3 — ISO Z/M/ZM variants of Polygon arrive
         /// as 3 after <see cref="ReadGeometryType"/> (<c>% 1000</c>). Any
         /// other nested type code is rejected by number, including
-        /// PolyhedralSurface (15), Triangle (17) and type 18. Triangle
+        /// PolyhedralSurface (15), Triangle (17) and Circle (18). Triangle
         /// (17) is refused even though the object model stores
         /// <see cref="Geometries.Curves.Triangle"/> — Year-1 wire format
         /// is Polygon 3 only. A Polygon with interior rings is not a

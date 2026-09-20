@@ -91,6 +91,14 @@ namespace NetTopologySuite.IO
         WKBTin = 16,
 
         /// <summary>
+        /// Circle (ISO/IEC 13249-3 type 18).
+        /// Year-1 Z/M/ZM use the ISO +1000/+2000/+3000 table recovered by
+        /// <c>(type &amp; 0xffff) % 1000</c> (1018 / 2018 / 3018); there are
+        /// no <c>WKBCircleZ|M|ZM</c> enum arms.
+        /// </summary>
+        WKBCircle = 18,
+
+        /// <summary>
         /// Point with Z coordinate.
         /// </summary>
         WKBPointZ = 1001,

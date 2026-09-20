@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Status: PRODUCTION (structure + Year-1 WKT + WKB type 11 + §4.2.25 typed members).
 // Year-1 WKB 11 is complete (Tickets 4–6; no longer partial). CIRCLE is a
-// Year-1 curve member (Ticket 19, WKT). The five ISO §5.1.67 curve names
+// Year-1 curve member (Ticket 19 WKT / Ticket 20 WKB type 18). The five ISO §5.1.67 curve names
 // NTS has no carrier for (GEODESICSTRING, ELLIPTICALCURVE, NURBSCURVE,
 // CLOTHOID, SPIRALCURVE) remain omitted.
 // Members are Curve (LS|CS|CC), never collapsed to LineString (F-MC / §4.2.25).
@@ -31,7 +31,8 @@ namespace NetTopologySuite.Geometries.Curves
     /// <see cref="CompoundCurve"/> to a flat <see cref="LineString"/> (the
     /// F-MC structural contract; ISO/IEC 13249-3 §4.2.25 <c>ST_GeometryN</c> /
     /// <c>ST_NumGeometries</c>). Year-1 WKT and WKB type 11 are complete.
-    /// <see cref="Circle"/> is a Year-1 member (Ticket 19, WKT). The five
+    /// <see cref="Circle"/> is a Year-1 member (Ticket 19 WKT / Ticket 20
+    /// WKB type 18). The five
     /// ISO/IEC 13249-3 §5.1.67 curve names NTS has no carrier for
     /// (<c>GEODESICSTRING</c>, <c>ELLIPTICALCURVE</c>,
     /// <c>NURBSCURVE</c>, <c>CLOTHOID</c>, <c>SPIRALCURVE</c>) remain omitted.

@@ -317,7 +317,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         [TestCase(15u, Description = "PolyhedralSurface (omitted surface)")]
         [TestCase(16u, Description = "TIN (omitted surface)")]
         [TestCase(17u, Description = "Triangle (omitted surface)")]
-        [TestCase(18u, Description = "unknown type 18 (not a Circle / Year-2 invention)")]
+        [TestCase(18u, Description = "Circle (not a Year-1 surface member)")]
         public void Ticket8_RejectsNonYear1NestedMemberTypeCode(uint nestedType)
         {
             byte[] member = _wkbWriter.Write(_wktReader.Read("POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))"));
@@ -332,12 +332,12 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         public void Ticket8_RejectsUnsupportedRingTypeInsideCurvePolygonMember()
         {
             byte[] ring = _wkbWriter.Write(_wktReader.Read("LINESTRING (0 0, 10 0, 10 10, 0 10, 0 0)"));
-            WriteTypeLe(ring, 1, 18u);
+            WriteTypeLe(ring, 1, 19u);
             byte[] curvePolygon = WrapAsCurvePolygon(ring);
             byte[] wrapped = WrapAsMultiSurface(curvePolygon);
             var ex = Assert.Throws<ParseException>(() => _wkbReader.Read(wrapped));
             Assert.That(ex.ToString(), Does.Contain("Year-1"));
-            Assert.That(ex.ToString(), Does.Contain("18"));
+            Assert.That(ex.ToString(), Does.Contain("19"));
         }
 
         [Test]
@@ -552,7 +552,7 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             uint raw = ReadTypeLe(bytes, offset + 1);
             bool hasSrid = (raw & 0x20000000u) != 0;
             uint code = (raw & 0xFFFFu) % 1000;
-            Assert.That(code, Is.EqualTo(2u).Or.EqualTo(8u).Or.EqualTo(9u),
+            Assert.That(code, Is.EqualTo(2u).Or.EqualTo(8u).Or.EqualTo(9u).Or.EqualTo(18u),
                 "Year-1 ring/member type at offset " + offset);
             int header = hasSrid ? 9 : 5;
             offset += header;

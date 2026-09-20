@@ -129,6 +129,9 @@ namespace NetTopologySuite.IO
                 case "TIN":
                     geometryType = WKBGeometryTypes.WKBTin;
                     break;
+                case "Circle":
+                    geometryType = WKBGeometryTypes.WKBCircle;
+                    break;
                 default:
                     Assert.ShouldNeverReachHere("Unknown geometry type:" + geom.GeometryType);
                     throw new ArgumentException("geom");
@@ -307,6 +310,8 @@ namespace NetTopologySuite.IO
         {
             if (geometry is Point point)
                 Write(point, writer, includeSRID);
+            else if (geometry is Circle circle)
+                WriteCircle(circle, writer, includeSRID);
             else if (geometry is CircularString circularString)
                 WriteCircularString(circularString, writer, includeSRID);
             else if (geometry is CompoundCurve compoundCurve)
@@ -642,6 +647,8 @@ namespace NetTopologySuite.IO
         {
             if (geometry is Point point)
                 return new byte[GetRequiredBufferSize(point, includeSRID)];
+            if (geometry is Circle circle)
+                return new byte[GetRequiredBufferSizeCurve(circle, includeSRID)];
             if (geometry is CircularString circularString)
                 return new byte[GetRequiredBufferSizeCurve(circularString, includeSRID)];
             if (geometry is CompoundCurve compoundCurve)
@@ -709,6 +716,8 @@ namespace NetTopologySuite.IO
         {
             if (geometry is Point point)
                 return GetRequiredBufferSize(point, includeSRID);
+            if (geometry is Circle circle)
+                return GetRequiredBufferSizeCurve(circle, includeSRID);
             if (geometry is CircularString circularString)
                 return GetRequiredBufferSizeCurve(circularString, includeSRID);
             if (geometry is CompoundCurve compoundCurve)
@@ -932,6 +941,29 @@ namespace NetTopologySuite.IO
         }
 
         /// <summary>
+        /// Write a Circle in its WKB format (ISO/IEC 13249-3 type 18).
+        /// The payload is three circumference points, or EMPTY (type 18
+        /// with zero points — same empty-body house style as
+        /// CircularString). Never demoted to CircularString type 8.
+        /// Z/M/ZM use the same ISO +1000/+2000/+3000 table as types 8–16
+        /// (writer emits 18 / 1018 / 2018 / 3018; no
+        /// <c>WKBCircleZ|M|ZM</c> enum arms).
+        /// </summary>
+        /// <param name="circle">The Circle</param>
+        /// <param name="writer">The writer</param>
+        /// <param name="includeSRID">
+        /// A flag indicting if SRID value is of possible interest.
+        /// The value is <c>&amp;&amp;</c>-combineed with <c>HandleSRID</c>.
+        /// </param>
+        private void WriteCircle(Circle circle, BinaryWriter writer, bool includeSRID)
+        {
+            WriteHeader(writer, circle, includeSRID);
+#pragma warning disable 618
+            Write(circle.CoordinateSequence, true, writer);
+#pragma warning restore 618
+        }
+
+        /// <summary>
         /// Write a CompoundCurve in its WKB format.
         /// </summary>
         /// <param name="compoundCurve">The CompoundCurve</param>
@@ -953,9 +985,10 @@ namespace NetTopologySuite.IO
         /// <summary>
         /// Write a CurvePolygon in its WKB format (ISO/IEC 13249-3 / GEOS type 10).
         /// Each ring is nested WKB LineString (2) | CircularString (8) |
-        /// CompoundCurve (9) only — the Year-1 ring grammar from Ticket 1.
-        /// EMPTY is a type-10 header with zero rings. Z/M/ZM use the same
-        /// ISO +1000/+2000/+3000 table as types 8–9.
+        /// CompoundCurve (9) | Circle (18) — the Year-1 ring grammar from
+        /// Ticket 1 plus Ticket 20 Circle. EMPTY is a type-10 header with
+        /// zero rings. Z/M/ZM use the same ISO +1000/+2000/+3000 table as
+        /// types 8–9.
         /// </summary>
         /// <param name="curvePolygon">The CurvePolygon</param>
         /// <param name="writer">The writer</param>
@@ -983,10 +1016,11 @@ namespace NetTopologySuite.IO
         /// <summary>
         /// Write a MultiCurve in its WKB format (ISO/IEC 13249-3 / GEOS type 11).
         /// Each member is nested WKB LineString (2) | CircularString (8) |
-        /// CompoundCurve (9) only — the Year-1 g4 <c>curveMember</c> grammar
-        /// from Ticket 4. EMPTY is a type-11 header with zero members.
-        /// Z/M/ZM use the same ISO +1000/+2000/+3000 table as types 8–10.
-        /// SRID/EWKB follows the same header path as MultiLineString.
+        /// CompoundCurve (9) | Circle (18) — the Year-1 g4
+        /// <c>curveMember</c> grammar from Ticket 4 plus Ticket 20 Circle.
+        /// EMPTY is a type-11 header with zero members. Z/M/ZM use the
+        /// same ISO +1000/+2000/+3000 table as types 8–10. SRID/EWKB
+        /// follows the same header path as MultiLineString.
         /// </summary>
         /// <param name="multiCurve">The MultiCurve</param>
         /// <param name="writer">The writer</param>
@@ -1110,6 +1144,21 @@ namespace NetTopologySuite.IO
         private int GetRequiredBufferSizeCurve(CircularString circularString, bool includeSRID)
         {
             return GetHeaderSize(includeSRID) + 4 + circularString.NumPoints * _coordinateSize;
+        }
+
+        /// <summary>
+        /// Computes the length of a buffer to write the <see cref="Circle"/>
+        /// <paramref name="circle"/> in its WKB format.
+        /// </summary>
+        /// <param name="circle">The Circle</param>
+        /// <param name="includeSRID">
+        /// A flag indicting if SRID value is of possible interest.
+        /// The value is <c>&amp;&amp;</c>-combineed with <c>HandleSRID</c>.
+        /// </param>
+        /// <returns>The number of bytes required to store the geometry in its WKB format.</returns>
+        private int GetRequiredBufferSizeCurve(Circle circle, bool includeSRID)
+        {
+            return GetHeaderSize(includeSRID) + 4 + circle.NumPoints * _coordinateSize;
         }
 
         /// <summary>

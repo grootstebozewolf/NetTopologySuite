@@ -231,15 +231,12 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void Ticket19_NoWkb18InThisPr()
+        public void Ticket19_WkbType18IsOwnedByTicket20()
         {
-            Assert.That(Enum.IsDefined(typeof(WKBGeometryTypes), 18), Is.False,
-                "WKB type 18 is Ticket 20; this PR must not mint WKBCircle.");
-            Assert.That(Enum.GetNames(typeof(WKBGeometryTypes)),
-                Has.None.EqualTo("WKBCircle"));
-
-            var circle = _reader.Read(UnitCircleWkt);
-            Assert.That(() => new WKBWriter().Write(circle), Throws.Exception);
+            // Ticket 19 pinned the ISO type number only. Ticket 20 owns
+            // WKBCircle read/write (CircleWkbYear1Test); this fixture must
+            // not remint WKT.
+            Assert.That((int)OgcGeometryType.Circle, Is.EqualTo(18));
         }
 
         [Test]
