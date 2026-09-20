@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: BSD-3-Clause
-// Status: PRODUCTION (structure + WKT/WKB) — GEOS / ISO WKB type 11.
+// Status: PRODUCTION (structure + Year-1 WKT + WKB type 11 + §4.2.25 typed members).
+// Year-1 WKB 11 is complete (Tickets 4–6; no longer partial). Year-2 member
+// names (CIRCLE, GEODESIC, ELLIPSE, NURBS, CLOTHOID, SPIRAL) remain omitted.
+// Members are Curve (LS|CS|CC), never collapsed to LineString (F-MC / §4.2.25).
 // IsSimple and IsValid are arc-aware (ISO/IEC 13249-3 §10.3.1 Desc 4 /
 // §10.1.1 Desc 10; NetTopologySuite.Proofs #615 ticket 615-h rung 4, #639),
 // with the kernel's fail-closed residues named in the throws. The remaining
 // metrics and analytic ops (Length, Envelope, Distance, Centroid,
 // InteriorPoint) fail closed with NotSupportedException until arc-aware
 // implementations land; Linearize() is the explicit chord escape hatch.
-// Assisted-by: xAI Grok
+// Assisted-by: xAI Grok; Ticket 6 typed-members: Cursor Grok 4.6
 
 using System;
+using System.Collections.Generic;
 
 namespace NetTopologySuite.Geometries.Curves
 {
@@ -17,6 +21,18 @@ namespace NetTopologySuite.Geometries.Curves
     /// (<see cref="LineString"/>, <see cref="CircularString"/>, <see cref="CompoundCurve"/>).
     /// Matches GEOS <c>geom::MultiCurve</c> / ISO WKB type 11.
     /// </summary>
+    /// <remarks>
+    /// <see cref="GetGeometryN"/> and enumeration expose <see cref="Curve"/>
+    /// and never collapse a <see cref="CircularString"/> or
+    /// <see cref="CompoundCurve"/> to a flat <see cref="LineString"/> (the
+    /// F-MC structural contract; ISO/IEC 13249-3 §4.2.25 <c>ST_GeometryN</c> /
+    /// <c>ST_NumGeometries</c>). Year-1 WKT and WKB type 11 are complete.
+    /// Year-2 member names (<c>CIRCLE</c>, <c>GEODESIC</c>, <c>ELLIPSE</c>,
+    /// <c>NURBS</c>, <c>CLOTHOID</c>, <c>SPIRAL</c>) remain omitted.
+    /// <para/>
+    /// The remaining analytic ops fail closed with
+    /// <see cref="NotSupportedException"/> until arc-aware implementations land.
+    /// </remarks>
     [Serializable]
     public class MultiCurve : GeometryCollection, ILineal
     {
@@ -26,25 +42,80 @@ namespace NetTopologySuite.Geometries.Curves
         /// <summary>
         /// Constructs a <see cref="MultiCurve"/>.
         /// </summary>
-        /// <param name="curves">Member curves, or null/empty for empty multi-curve</param>
+        /// <param name="curves">
+        /// Member geometries, or <c>null</c>/empty for an empty multi-curve.
+        /// Each non-empty member must be a Year-1 curve
+        /// (<see cref="LineString"/>, <see cref="CircularString"/>, or
+        /// <see cref="CompoundCurve"/> with LineString|CircularString members).
+        /// </param>
         /// <param name="factory">Geometry factory</param>
-        public MultiCurve(Curve[] curves, GeometryFactory factory)
-            : base(ToGeometryArray(curves), factory)
+        /// <exception cref="ArgumentException">
+        /// If a member is <c>null</c>, is not a <see cref="Curve"/>, or is not
+        /// a Year-1 type (Ticket 4 member lock).
+        /// </exception>
+        public MultiCurve(Geometry[] curves, GeometryFactory factory)
+            : base(ValidateYear1Members(curves), factory)
         {
         }
 
-        private static Geometry[] ToGeometryArray(Curve[] curves)
+        private static Geometry[] ValidateYear1Members(Geometry[] curves)
         {
             if (curves == null || curves.Length == 0)
                 return Array.Empty<Geometry>();
-            var geoms = new Geometry[curves.Length];
             for (int i = 0; i < curves.Length; i++)
             {
                 if (curves[i] == null)
                     throw new ArgumentException("MultiCurve members must not be null", nameof(curves));
-                geoms[i] = curves[i];
+                if (!(curves[i] is Curve curve))
+                {
+                    throw new ArgumentException(
+                        "MultiCurve members must be curves (LineString, CircularString or CompoundCurve), got "
+                        + curves[i].GetType().Name + ".", nameof(curves));
+                }
+                ValidateYear1Member(curve, nameof(curves));
             }
-            return geoms;
+            return curves;
+        }
+
+        /// <summary>
+        /// Year-1 <c>ST_MultiCurve</c> member types (ISO/IEC 13249-3 §4.2.25 /
+        /// §5.1.67 g4 <c>curveMember</c>, Ticket 4): <see cref="LineString"/>
+        /// (including <see cref="LinearRing"/>), <see cref="CircularString"/>,
+        /// or <see cref="CompoundCurve"/> whose members are
+        /// <see cref="LineString"/> | <see cref="CircularString"/> only.
+        /// Nested <see cref="CompoundCurve"/> members are rejected.
+        /// </summary>
+        /// <param name="member">The member to check.</param>
+        /// <param name="paramName">The constructor parameter name for exceptions.</param>
+        /// <exception cref="ArgumentException">When the member is not a Year-1 curve type.</exception>
+        private static void ValidateYear1Member(Curve member, string paramName)
+        {
+            if (member == null || member.IsEmpty)
+                return;
+            if (member is LineString || member is CircularString)
+                return;
+            if (member is CompoundCurve compound)
+            {
+                foreach (var component in compound.Curves)
+                {
+                    if (component is CompoundCurve)
+                    {
+                        throw new ArgumentException(
+                            "A Year-1 CompoundCurve member must not contain nested CompoundCurve members " +
+                            "(contiguous LineString | CircularString only).", paramName);
+                    }
+                    if (!(component is LineString || component is CircularString))
+                    {
+                        throw new ArgumentException(
+                            "A Year-1 CompoundCurve member admits only LineString and CircularString components, got "
+                            + component.GetType().Name + ".", paramName);
+                    }
+                }
+                return;
+            }
+            throw new ArgumentException(
+                "A Year-1 MultiCurve member must be a LineString, CircularString or CompoundCurve, got "
+                + member.GetType().Name + ".", paramName);
         }
 
         /// <inheritdoc />
@@ -73,6 +144,38 @@ namespace NetTopologySuite.Geometries.Curves
         /// <inheritdoc />
         public override OgcGeometryType OgcGeometryType => OgcGeometryType.MultiCurve;
 
+        /// <summary>
+        /// The member at <paramref name="n"/> as a <see cref="Curve"/>
+        /// (ISO/IEC 13249-3 §4.2.25 <c>ST_GeometryN</c>). Never downcast to
+        /// <see cref="LineString"/>: a <see cref="CircularString"/> or
+        /// <see cref="CompoundCurve"/> member is returned as that subtype.
+        /// </summary>
+        /// <param name="n">Zero-based member index.</param>
+        /// <returns>The member curve; the same instance stored at construction.</returns>
+        public new Curve GetGeometryN(int n) => (Curve)base.GetGeometryN(n);
+
+        /// <summary>
+        /// The member at <paramref name="i"/> as a <see cref="Curve"/>
+        /// (ISO/IEC 13249-3 §4.2.25). Same no-downcast contract as
+        /// <see cref="GetGeometryN"/>.
+        /// </summary>
+        /// <param name="i">Zero-based member index.</param>
+        public new Curve this[int i] => GetGeometryN(i);
+
+        /// <summary>
+        /// The member curves in construction order (ISO/IEC 13249-3 §4.2.25).
+        /// Enumeration never downcasts <see cref="CircularString"/> or
+        /// <see cref="CompoundCurve"/> to <see cref="LineString"/>.
+        /// </summary>
+        public IEnumerable<Curve> Curves
+        {
+            get
+            {
+                for (int i = 0; i < NumGeometries; i++)
+                    yield return GetGeometryN(i);
+            }
+        }
+
         /// <summary>True if non-empty and every member curve is closed.</summary>
         public bool IsClosed
         {
@@ -82,7 +185,7 @@ namespace NetTopologySuite.Geometries.Curves
                     return false;
                 for (int i = 0; i < NumGeometries; i++)
                 {
-                    if (!((Curve)GetGeometryN(i)).IsClosed)
+                    if (!GetGeometryN(i).IsClosed)
                         return false;
                 }
                 return true;
