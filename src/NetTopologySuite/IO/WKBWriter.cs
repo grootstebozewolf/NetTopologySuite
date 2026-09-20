@@ -942,7 +942,11 @@ namespace NetTopologySuite.IO
         }
 
         /// <summary>
-        /// Write a CurvePolygon in its WKB format.
+        /// Write a CurvePolygon in its WKB format (ISO/IEC 13249-3 / GEOS type 10).
+        /// Each ring is nested WKB LineString (2) | CircularString (8) |
+        /// CompoundCurve (9) only — the Year-1 ring grammar from Ticket 1.
+        /// EMPTY is a type-10 header with zero rings. Z/M/ZM use the same
+        /// ISO +1000/+2000/+3000 table as types 8–9.
         /// </summary>
         /// <param name="curvePolygon">The CurvePolygon</param>
         /// <param name="writer">The writer</param>

@@ -756,25 +756,49 @@ namespace NetTopologySuite.IO
 
         /// <summary>
         /// Reads a SQL/MM CompoundCurve (GEOS/ISO WKB type 9).
+        /// Nested <see cref="CompoundCurve"/> members are accepted and flattened
+        /// (ADR-0005). Year-1 <see cref="CurvePolygon"/> rings reject nested
+        /// type 9 instead of flattening (Ticket 1 lock).
         /// </summary>
         /// <param name="reader">The reader</param>
         /// <param name="cs">The coordinate system</param>
         /// <param name="srid">The spatial reference id for the geometry.</param>
         /// <returns>A <see cref="CompoundCurve"/> geometry</returns>
         protected Geometry ReadCompoundCurve(BinaryReader reader, CoordinateSystem cs, int srid)
+            => ReadCompoundCurve(reader, cs, srid, year1RingMembers: false);
+
+        /// <summary>
+        /// Reads a SQL/MM CompoundCurve (GEOS/ISO WKB type 9).
+        /// </summary>
+        /// <param name="reader">The reader</param>
+        /// <param name="cs">The coordinate system</param>
+        /// <param name="srid">The spatial reference id for the geometry.</param>
+        /// <param name="year1RingMembers">
+        /// When <c>true</c>, this CompoundCurve is a Year-1 CurvePolygon ring:
+        /// members must be LineString (2) or CircularString (8) only. Nested
+        /// CompoundCurve (9) is rejected, not flattened — same lock as Ticket 1 WKT.
+        /// </param>
+        /// <returns>A <see cref="CompoundCurve"/> geometry</returns>
+        private CompoundCurve ReadCompoundCurve(BinaryReader reader, CoordinateSystem cs, int srid, bool year1RingMembers)
         {
             var factory = _geometryServices.CreateGeometryFactory(_precisionModel, srid, _sequenceFactory);
             int numCurves = ReadNumField(reader, FieldNumElements, ReasonableNumElements(reader.BaseStream));
             var curves = new Curve[numCurves];
             for (int i = 0; i < numCurves; i++)
             {
-                curves[i] = ReadCurveMember(reader, srid);
+                curves[i] = year1RingMembers
+                    ? ReadYear1CompoundCurveRingMember(reader, srid)
+                    : ReadCurveMember(reader, srid);
             }
             return new CompoundCurve(curves, factory);
         }
 
         /// <summary>
         /// Reads a SQL/MM CurvePolygon (GEOS/ISO WKB type 10).
+        /// Year-1 rings are nested WKB LineString (2) | CircularString (8) |
+        /// CompoundCurve (9) only (ISO/IEC 13249-3 §8.2 / Ticket 1 grammar).
+        /// Z/M/ZM use the same ISO +1000/+2000/+3000 table as types 8–9
+        /// (recovered as type 10).
         /// </summary>
         /// <param name="reader">The reader</param>
         /// <param name="cs">The coordinate system</param>
@@ -787,10 +811,10 @@ namespace NetTopologySuite.IO
             if (numRings == 0)
                 return new CurvePolygon(null, factory);
 
-            var shell = ReadCurveMember(reader, srid);
+            var shell = ReadCurvePolygonRing(reader, srid);
             var holes = new Curve[numRings - 1];
             for (int i = 0; i < numRings - 1; i++)
-                holes[i] = ReadCurveMember(reader, srid);
+                holes[i] = ReadCurvePolygonRing(reader, srid);
             return new CurvePolygon(shell, holes, factory);
         }
 
@@ -849,6 +873,8 @@ namespace NetTopologySuite.IO
 
         /// <summary>
         /// Reads a nested curve member (byte-order + type + body).
+        /// Used for standalone CompoundCurve and MultiCurve members; nested
+        /// CompoundCurve is accepted and flattened (ADR-0005).
         /// </summary>
         /// <param name="reader">The reader</param>
         /// <param name="srid">The spatial reference id for the geometry.</param>
@@ -872,6 +898,81 @@ namespace NetTopologySuite.IO
                     return (Curve)ReadCompoundCurve(reader, cs2, srid2);
                 default:
                     throw new ArgumentException("LineString, CircularString or CompoundCurve expected as curve member");
+            }
+        }
+
+        /// <summary>
+        /// Reads a Year-1 <see cref="CurvePolygon"/> ring: nested WKB
+        /// LineString (2) | CircularString (8) | CompoundCurve (9) only.
+        /// Any other nested type code is rejected. ISO Z/M/ZM variants of
+        /// types 8–9 arrive as 8/9 after <see cref="ReadGeometryType"/>
+        /// (<c>% 1000</c>), matching the table used for those types.
+        /// </summary>
+        /// <param name="reader">The reader</param>
+        /// <param name="srid">The spatial reference id for the geometry.</param>
+        /// <returns>A Year-1 ring curve</returns>
+        /// <exception cref="ArgumentException">
+        /// When the nested type is not 2, 8 or 9.
+        /// </exception>
+        private Curve ReadCurvePolygonRing(BinaryReader reader, int srid)
+        {
+            ReadByteOrder(reader);
+            int srid2 = srid;
+            var geometryType = ReadGeometryType(reader, out var cs2, ref srid2);
+            if (srid2 < 0) srid2 = srid;
+            switch (geometryType)
+            {
+                case WKBGeometryTypes.WKBLineString:
+                case WKBGeometryTypes.WKBLineStringZ:
+                case WKBGeometryTypes.WKBLineStringM:
+                case WKBGeometryTypes.WKBLineStringZM:
+                    return (Curve)ReadLineString(reader, cs2, srid2);
+                case WKBGeometryTypes.WKBCircularString:
+                    return (Curve)ReadCircularString(reader, cs2, srid2);
+                case WKBGeometryTypes.WKBCompoundCurve:
+                    return ReadCompoundCurve(reader, cs2, srid2, year1RingMembers: true);
+                default:
+                    throw new ArgumentException(
+                        "Unexpected CurvePolygon ring WKB type " + (int)geometryType +
+                        ": Year-1 ST_CurvePolygon ring production " +
+                        "(ISO/IEC 13249-3 §8.2) is LineString (2) | CircularString (8) | CompoundCurve (9) only.");
+            }
+        }
+
+        /// <summary>
+        /// Reads one member of a Year-1 CurvePolygon CompoundCurve ring.
+        /// LineString (2) and CircularString (8) only; nested CompoundCurve (9)
+        /// is rejected (Ticket 1 WKT lock, not flattened).
+        /// </summary>
+        /// <param name="reader">The reader</param>
+        /// <param name="srid">The spatial reference id for the geometry.</param>
+        /// <returns>A LineString or CircularString member</returns>
+        /// <exception cref="ArgumentException">
+        /// When the nested type is CompoundCurve or any non-LS/CS code.
+        /// </exception>
+        private Curve ReadYear1CompoundCurveRingMember(BinaryReader reader, int srid)
+        {
+            ReadByteOrder(reader);
+            int srid2 = srid;
+            var geometryType = ReadGeometryType(reader, out var cs2, ref srid2);
+            if (srid2 < 0) srid2 = srid;
+            switch (geometryType)
+            {
+                case WKBGeometryTypes.WKBLineString:
+                case WKBGeometryTypes.WKBLineStringZ:
+                case WKBGeometryTypes.WKBLineStringM:
+                case WKBGeometryTypes.WKBLineStringZM:
+                    return (Curve)ReadLineString(reader, cs2, srid2);
+                case WKBGeometryTypes.WKBCircularString:
+                    return (Curve)ReadCircularString(reader, cs2, srid2);
+                case WKBGeometryTypes.WKBCompoundCurve:
+                    throw new ArgumentException(
+                        "Nested COMPOUNDCURVE is not a Year-1 CurvePolygon ring member " +
+                        "(ISO/IEC 13249-3 §8.2: CompoundCurve rings are contiguous LineString | CircularString only).");
+                default:
+                    throw new ArgumentException(
+                        "A Year-1 CompoundCurve ring admits only LineString (2) and CircularString (8) members, got WKB type "
+                        + (int)geometryType + ".");
             }
         }
 
