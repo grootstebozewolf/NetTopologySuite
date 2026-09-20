@@ -7,7 +7,8 @@
 // ELEMENTS, MAXSIDELENGTH, and the eleven ST_TINElement / GML
 // TINElementTypeType kinds) are refused by name. Short/wrong spellings
 // stay ordinary unknown words or parse errors. No CIRCLE / GEODESICSTRING
-// carrier. No WKB 16.
+// carrier. Ticket 18: Year-1 WKB 16 is complete (no longer "partial"); named
+// fields in this file stay omitted. Typed members stay in TinMembersYear1Test.
 
 using NetTopologySuite.Geometries;
 using NetTopologySuite.Geometries.Curves;

@@ -6,6 +6,9 @@
 // and any other non-3 are refused by numeric type. Reuses Ticket 16 Year-1
 // WKT g4 lock; does not remint WKT. No CIRCLE / WKB 18. Dim decode is the
 // existing (type & 0xffff) % 1000 reducer only (no WKBTinZ|M|ZM arms).
+// Ticket 18: Year-1 WKB 16 is complete (no longer "partial"); named fields
+// (PATCHES / ELEMENTS / MAXSIDELENGTH) stay omitted. Typed members stay in
+// TinMembersYear1Test.
 
 using System;
 using NetTopologySuite.Geometries;
