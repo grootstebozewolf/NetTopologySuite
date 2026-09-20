@@ -997,7 +997,14 @@ namespace NetTopologySuite.IO
         }
 
         /// <summary>
-        /// Write a MultiSurface in its WKB format.
+        /// Write a MultiSurface in its WKB format (ISO/IEC 13249-3 / GEOS type 12).
+        /// Each member is nested WKB Polygon (3) | CurvePolygon (10) only —
+        /// the Year-1 <c>surfaceMember</c> grammar from Ticket 7. CurvePolygon
+        /// members emit type 10 with Year-1 rings (Ticket 2). EMPTY is a
+        /// type-12 header with zero members. Z/M/ZM use the same ISO
+        /// +1000/+2000/+3000 table as types 8–11. SRID/EWKB follows the
+        /// same header path as MultiPolygon. A GeometryCollection of
+        /// surfaces is written as type 7, never rewritten as type 12.
         /// </summary>
         /// <param name="multiSurface">The MultiSurface</param>
         /// <param name="writer">The writer</param>
