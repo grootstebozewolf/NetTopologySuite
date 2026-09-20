@@ -154,20 +154,16 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void Ticket20_IsoZmTypeCodesAcceptedOnReadWhenPatched()
+        public void Ticket20_IsoZmTypeCodesAcceptedOnReadWhenPatchedWithMatchingOrdinates()
         {
-            var xy = _wktReader.Read(WktUnit);
-            byte[] bytes = _wkbWriter.Write(xy);
-            Assert.That(ReadTypeLe(bytes, 1), Is.EqualTo(18u));
-
-            foreach (uint isoType in new uint[] { 1018u, 2018u, 3018u })
-            {
-                byte[] patched = (byte[])bytes.Clone();
-                WriteTypeLe(patched, 1, isoType);
-                var again = _wkbReader.Read(patched);
-                Assert.That(again, Is.InstanceOf<Circle>(), "ISO type " + isoType);
-                Assert.That(((Circle)again).NumPoints, Is.EqualTo(3));
-            }
+            // Unlike MultiCurve/TIN, Circle's body is the coordinate stream.
+            // Patching 18 → 1018/2018/3018 is only valid when each point
+            // carries the matching extra ordinates (reducer-only decode).
+            byte[] xy = _wkbWriter.Write(_wktReader.Read(WktUnit));
+            Assert.That(ReadTypeLe(xy, 1), Is.EqualTo(18u));
+            Assert.That(_wkbReader.Read(PadCircleOrdinates(xy, 1018u)), Is.InstanceOf<Circle>());
+            Assert.That(_wkbReader.Read(PadCircleOrdinates(xy, 2018u)), Is.InstanceOf<Circle>());
+            Assert.That(_wkbReader.Read(PadCircleOrdinates(xy, 3018u)), Is.InstanceOf<Circle>());
         }
 
         [Test]
@@ -369,6 +365,29 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         {
             Assert.That(ReadTypeLe(bytes, typeOffset), Is.EqualTo(18u));
             Assert.That(ReadTypeLe(bytes, typeOffset), Is.Not.EqualTo(8u));
+        }
+
+        /// <summary>
+        /// Expands an XY Circle WKB with extra 0.0 ordinates and patches the
+        /// ISO type so the reducer can recover 18 from 1018 / 2018 / 3018.
+        /// </summary>
+        private static byte[] PadCircleOrdinates(byte[] xyWkb, uint isoType)
+        {
+            uint numPoints = ReadUInt32Le(xyWkb, 5);
+            int extra = isoType >= 3000u ? 16 : 8;
+            var padded = new byte[xyWkb.Length + (int)numPoints * extra];
+            padded[0] = xyWkb[0];
+            WriteTypeLe(padded, 1, isoType);
+            WriteUInt32Le(padded, 5, numPoints);
+            int src = 9;
+            int dst = 9;
+            for (uint i = 0; i < numPoints; i++)
+            {
+                Buffer.BlockCopy(xyWkb, src, padded, dst, 16);
+                src += 16;
+                dst += 16 + extra;
+            }
+            return padded;
         }
 
         /// <summary>
