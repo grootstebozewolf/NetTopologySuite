@@ -238,6 +238,8 @@ namespace NetTopologySuite.IO
                         return ReadMultiCurve(reader, cs, srid);
                     case WKBGeometryTypes.WKBMultiSurface:
                         return ReadMultiSurface(reader, cs, srid);
+                    case WKBGeometryTypes.WKBTin:
+                        return ReadTin(reader, cs, srid);
                     default:
                         throw new ArgumentException("Geometry type not recognized. GeometryCode: " + geometryType);
                 }
@@ -683,6 +685,9 @@ namespace NetTopologySuite.IO
                     case WKBGeometryTypes.WKBMultiSurface:
                         geometries[i] = ReadMultiSurface(reader, cs2, srid2);
                         break;
+                    case WKBGeometryTypes.WKBTin:
+                        geometries[i] = ReadTin(reader, cs2, srid2);
+                        break;
 
                     default:
                         throw new ArgumentException("Should never reach here!");
@@ -871,6 +876,32 @@ namespace NetTopologySuite.IO
         }
 
         /// <summary>
+        /// Reads a SQL/MM TIN (ISO/IEC 13249-3 / OGC SFA-CA type 16).
+        /// Year-1 members are nested WKB Polygon (3) only (ISO/IEC 13249-3
+        /// g4 <c>polygonText</c>, Ticket 16 WKT lock). Each Polygon is
+        /// wrapped as the existing <see cref="Geometries.Curves.Triangle"/>
+        /// (no second Triangle type). Nested Triangle (17),
+        /// PolyhedralSurface (15), type 18 and any other non-3 code are
+        /// refused by numeric type — WKB has no keyword list. EMPTY is a
+        /// type-16 header with zero patches. Z/M/ZM use the same ISO
+        /// +1000/+2000/+3000 table as types 8–12 (recovered as type 16 by
+        /// the <c>(type &amp; 0xffff) % 1000</c> reducer only).
+        /// </summary>
+        /// <param name="reader">The reader</param>
+        /// <param name="cs">The coordinate system</param>
+        /// <param name="srid">The spatial reference id for the geometry.</param>
+        /// <returns>A <see cref="Tin"/> geometry</returns>
+        protected Geometry ReadTin(BinaryReader reader, CoordinateSystem cs, int srid)
+        {
+            var factory = _geometryServices.CreateGeometryFactory(_precisionModel, srid, _sequenceFactory);
+            int numGeometries = ReadNumField(reader, FieldNumElements, ReasonableNumElements(reader.BaseStream));
+            var triangles = new Geometries.Curves.Triangle[numGeometries];
+            for (int i = 0; i < numGeometries; i++)
+                triangles[i] = ReadTinMember(reader, srid);
+            return new Tin(triangles, factory);
+        }
+
+        /// <summary>
         /// Reads a nested curve member (byte-order + type + body).
         /// Used for standalone CompoundCurve; nested CompoundCurve is
         /// accepted and flattened (ADR-0005). Year-1 MultiCurve members
@@ -1016,6 +1047,46 @@ namespace NetTopologySuite.IO
                         ": Year-1 ST_MultiCurve member production " +
                         "(ISO/IEC 13249-3 §5.1.67 g4 curveMember) is LineString (2) | CircularString (8) | CompoundCurve (9) only.");
             }
+        }
+
+        /// <summary>
+        /// Reads a Year-1 <see cref="Tin"/> member: nested WKB Polygon (3)
+        /// only (ISO/IEC 13249-3 g4 <c>polygonText</c>, Ticket 16). The
+        /// reduced type must be 3 — ISO Z/M/ZM variants of Polygon arrive
+        /// as 3 after <see cref="ReadGeometryType"/> (<c>% 1000</c>). Any
+        /// other nested type code is rejected by number, including
+        /// PolyhedralSurface (15), Triangle (17) and type 18. Triangle
+        /// (17) is refused even though the object model stores
+        /// <see cref="Geometries.Curves.Triangle"/> — Year-1 wire format
+        /// is Polygon 3 only. A Polygon with interior rings is not a
+        /// triangle patch (same lock as Ticket 16 WKT).
+        /// </summary>
+        /// <param name="reader">The reader</param>
+        /// <param name="srid">The spatial reference id for the geometry.</param>
+        /// <returns>A Year-1 TIN patch as <see cref="Geometries.Curves.Triangle"/></returns>
+        /// <exception cref="ArgumentException">
+        /// When the nested type is not 3, or the Polygon has interior rings.
+        /// </exception>
+        private Geometries.Curves.Triangle ReadTinMember(BinaryReader reader, int srid)
+        {
+            ReadByteOrder(reader);
+            int srid2 = srid;
+            var geometryType = ReadGeometryType(reader, out var cs2, ref srid2);
+            if (srid2 < 0) srid2 = srid;
+            if (geometryType != WKBGeometryTypes.WKBPolygon)
+            {
+                throw new ArgumentException(
+                    "Unexpected TIN member WKB type " + (int)geometryType +
+                    ": Year-1 ST_TIN member production " +
+                    "(ISO/IEC 13249-3 g4 polygonText) is Polygon (3) only.");
+            }
+
+            var polygon = (Polygon)ReadPolygon(reader, cs2, srid2);
+            if (polygon.NumInteriorRings != 0)
+                throw new ArgumentException("A TRIANGLE within a TIN must not contain interior rings");
+
+            var factory = _geometryServices.CreateGeometryFactory(_precisionModel, srid2, _sequenceFactory);
+            return new Geometries.Curves.Triangle((LinearRing)polygon.ExteriorRing, factory);
         }
 
         /// <summary>

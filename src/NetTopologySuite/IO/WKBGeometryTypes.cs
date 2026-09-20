@@ -83,6 +83,14 @@ namespace NetTopologySuite.IO
         WKBMultiSurface = 12,
 
         /// <summary>
+        /// TIN (ISO/IEC 13249-3 / OGC SFA-CA type 16).
+        /// Year-1 Z/M/ZM use the ISO +1000/+2000/+3000 table recovered by
+        /// <c>(type &amp; 0xffff) % 1000</c> (1016 / 2016 / 3016); there are
+        /// no <c>WKBTinZ|M|ZM</c> enum arms.
+        /// </summary>
+        WKBTin = 16,
+
+        /// <summary>
         /// Point with Z coordinate.
         /// </summary>
         WKBPointZ = 1001,
