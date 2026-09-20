@@ -845,6 +845,16 @@ namespace NetTopologySuite.IO
 
         /// <summary>
         /// Reads a SQL/MM MultiSurface (GEOS/ISO WKB type 12).
+        /// Year-1 members are nested WKB Polygon (3) | CurvePolygon (10)
+        /// only (ISO/IEC 13249-3 <c>surfaceMember</c> = polygonText |
+        /// curvePolygonGeometry, Ticket 7 WKT lock). CurvePolygon members
+        /// reuse <see cref="ReadCurvePolygon"/>, so their rings obey the
+        /// Year-1 LineString (2) | CircularString (8) | CompoundCurve (9)
+        /// lock (Ticket 2). Omitted surface types (TRIANGLE, TIN,
+        /// POLYHEDRALSURFACE, COMPOUNDSURFACE) and Year-2 curve codes are
+        /// refused by type code — WKB has no keyword list. Z/M/ZM use the
+        /// same ISO +1000/+2000/+3000 table as types 8–11 (recovered as
+        /// type 12).
         /// </summary>
         /// <param name="reader">The reader</param>
         /// <param name="cs">The coordinate system</param>
@@ -856,26 +866,7 @@ namespace NetTopologySuite.IO
             int numGeometries = ReadNumField(reader, FieldNumElements, ReasonableNumElements(reader.BaseStream));
             var surfaces = new Geometry[numGeometries];
             for (int i = 0; i < numGeometries; i++)
-            {
-                ReadByteOrder(reader);
-                int srid2 = srid;
-                var geometryType = ReadGeometryType(reader, out var cs2, ref srid2);
-                if (srid2 < 0) srid2 = srid;
-                switch (geometryType)
-                {
-                    case WKBGeometryTypes.WKBPolygon:
-                    case WKBGeometryTypes.WKBPolygonZ:
-                    case WKBGeometryTypes.WKBPolygonM:
-                    case WKBGeometryTypes.WKBPolygonZM:
-                        surfaces[i] = ReadPolygon(reader, cs2, srid2);
-                        break;
-                    case WKBGeometryTypes.WKBCurvePolygon:
-                        surfaces[i] = ReadCurvePolygon(reader, cs2, srid2);
-                        break;
-                    default:
-                        throw new ArgumentException("Polygon or CurvePolygon feature expected for MultiSurface member");
-                }
-            }
+                surfaces[i] = ReadMultiSurfaceMember(reader, srid);
             return new MultiSurface(surfaces, factory);
         }
 
@@ -945,6 +936,46 @@ namespace NetTopologySuite.IO
                         "Unexpected CurvePolygon ring WKB type " + (int)geometryType +
                         ": Year-1 ST_CurvePolygon ring production " +
                         "(ISO/IEC 13249-3 §8.2) is LineString (2) | CircularString (8) | CompoundCurve (9) only.");
+            }
+        }
+
+        /// <summary>
+        /// Reads a Year-1 <see cref="MultiSurface"/> member: nested WKB
+        /// Polygon (3) | CurvePolygon (10) only (ISO/IEC 13249-3
+        /// <c>surfaceMember</c> = polygonText | curvePolygonGeometry,
+        /// Ticket 7). Any other nested type code is rejected, including
+        /// MultiPolygon (6), MultiCurve (11), MultiSurface (12),
+        /// PolyhedralSurface (15), TIN (16), Triangle (17) and type 18.
+        /// CurvePolygon members reuse <see cref="ReadCurvePolygon"/> so
+        /// their rings obey the Year-1 LS|CS|CC lock. Nested CompoundCurve
+        /// inside a CurvePolygon ring is rejected (Ticket 2).
+        /// </summary>
+        /// <param name="reader">The reader</param>
+        /// <param name="srid">The spatial reference id for the geometry.</param>
+        /// <returns>A Year-1 MultiSurface member</returns>
+        /// <exception cref="ArgumentException">
+        /// When the nested type is not 3 or 10.
+        /// </exception>
+        private Geometry ReadMultiSurfaceMember(BinaryReader reader, int srid)
+        {
+            ReadByteOrder(reader);
+            int srid2 = srid;
+            var geometryType = ReadGeometryType(reader, out var cs2, ref srid2);
+            if (srid2 < 0) srid2 = srid;
+            switch (geometryType)
+            {
+                case WKBGeometryTypes.WKBPolygon:
+                case WKBGeometryTypes.WKBPolygonZ:
+                case WKBGeometryTypes.WKBPolygonM:
+                case WKBGeometryTypes.WKBPolygonZM:
+                    return ReadPolygon(reader, cs2, srid2);
+                case WKBGeometryTypes.WKBCurvePolygon:
+                    return ReadCurvePolygon(reader, cs2, srid2);
+                default:
+                    throw new ArgumentException(
+                        "Unexpected MultiSurface member WKB type " + (int)geometryType +
+                        ": Year-1 ST_MultiSurface member production " +
+                        "(ISO/IEC 13249-3 surfaceMember = polygonText | curvePolygonGeometry) is Polygon (3) | CurvePolygon (10) only.");
             }
         }
 
