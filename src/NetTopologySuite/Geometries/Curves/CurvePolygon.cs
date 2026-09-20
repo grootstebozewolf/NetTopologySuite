@@ -5,13 +5,16 @@
 //   companion JTS prototype at grootstebozewolf/jts#1, AI-generated portions are
 //   dedicated to CC0-1.0; human curation falls under the NTS BSD-3-Clause grant.
 //
-//   Assisted-by: Claude (Fable 5)
+//   Assisted-by: Claude (Fable 5); Ticket 3 typed-members: Cursor Grok 4.6
 //
-// Status: PRODUCTION (structure + WKT/WKB) — GEOS 3.13-class foundation.
+// Status: PRODUCTION (structure + Year-1 WKT + WKB type 10 + §8.2 typed members).
+// Year-1 WKB 10 is complete (Tickets 1–3; no longer partial). Year-2 ring names
+// (CIRCLE, GEODESIC, ELLIPSE, NURBS, CLOTHOID, SPIRAL) remain omitted.
 // Rings are Curve, never collapsed to LinearRing (F-CP). Area and Length
 // (perimeter) are closed-form over the structural rings (JTS 9808dfa1 port);
 // Linearize(tolerance) densifies by sagitta, keeping every control as an
-// exact vertex (JTS f6347444 port). The remaining analytic ops (Envelope,
+// exact vertex (JTS f6347444 port). Envelope-from-controls is identity-only
+// (GetHashCode); the remaining analytic ops (Envelope, curve-to-curve
 // Distance, Centroid, InteriorPoint) fail closed with NotSupportedException
 // until arc-aware implementations land. IsSimple evaluates ring simplicity
 // over the arc loci (615-h rung 3); IsValid is arc-aware partial: definite
@@ -34,7 +37,11 @@ namespace NetTopologySuite.Geometries.Curves
     /// Because <c>CurvePolygon</c> extends <c>Surface&lt;Curve&gt;</c> rather than
     /// <c>Polygon</c>, the ring accessors are typed <see cref="Curve"/> and never
     /// collapse a curved ring to a flat <see cref="LinearRing"/> (the F-CP
-    /// structural contract).
+    /// structural contract; ISO/IEC 13249-3 §8.2 <c>ST_ExteriorRing</c> /
+    /// <c>ST_NumInteriorRing</c> / <c>ST_InteriorRingN</c>).
+    /// Year-1 WKT and WKB type 10 are complete. Year-2 ring names
+    /// (<c>CIRCLE</c>, <c>GEODESIC</c>, <c>ELLIPSE</c>, <c>NURBS</c>,
+    /// <c>CLOTHOID</c>, <c>SPIRAL</c>) remain omitted.
     /// <para/>
     /// <see cref="Area"/> and <see cref="Length"/> (perimeter) are closed-form over
     /// the structural rings, and <see cref="Linearize(double)"/> densifies by
@@ -182,13 +189,28 @@ namespace NetTopologySuite.Geometries.Curves
                 + ring.GetType().Name + ".", paramName);
         }
 
-        /// <inheritdoc cref="Surface{T}.ExteriorRing"/>
+        /// <summary>
+        /// The exterior ring as a <see cref="Curve"/> (ISO/IEC 13249-3 §8.2
+        /// <c>ST_ExteriorRing</c>). Never downcast to <see cref="LinearRing"/>:
+        /// a <see cref="CircularString"/> or <see cref="CompoundCurve"/> shell
+        /// is returned as that subtype.
+        /// </summary>
         public override Curve ExteriorRing => _shell;
 
-        /// <inheritdoc cref="Surface{T}.NumInteriorRings"/>
+        /// <summary>
+        /// The number of interior rings (ISO/IEC 13249-3 §8.2
+        /// <c>ST_NumInteriorRing</c> / <see cref="Surface{T}.NumInteriorRings"/>).
+        /// </summary>
         public override int NumInteriorRings => _holes.Length;
 
-        /// <inheritdoc cref="Surface{T}.GetInteriorRingN"/>
+        /// <summary>
+        /// The interior ring at <paramref name="index"/> as a <see cref="Curve"/>
+        /// (ISO/IEC 13249-3 §8.2 <c>ST_InteriorRingN</c>). Never downcast to
+        /// <see cref="LinearRing"/>: a <see cref="CircularString"/> or
+        /// <see cref="CompoundCurve"/> hole is returned as that subtype.
+        /// </summary>
+        /// <param name="index">Zero-based hole index.</param>
+        /// <returns>The interior ring; the same instance stored at construction.</returns>
         public override Curve GetInteriorRingN(int index) => _holes[index];
 
         /// <inheritdoc cref="Geometry.GeometryType"/>

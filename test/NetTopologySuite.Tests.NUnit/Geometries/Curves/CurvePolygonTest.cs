@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: BSD-3-Clause
-// AI-drafted, human-reviewed.  Assisted-by: Claude (Fable 5)
+// AI-drafted, human-reviewed.  Assisted-by: Claude (Fable 5); Ticket 3: Cursor Grok 4.6
 //
 // The "FCP_*" tests are the in-tree port of CurvePolygonStructuralSpec from the
 // out-of-tree NetTopologySuite.Curve repository. They pin the F-CP (Structural
 // CurvePolygon) contract of the SFA Curve Awareness epic (locationtech/jts#1195,
 // Phase 1): rings are exposed as Curve and never collapse to LinearRing on
-// access, copy, or WKT round-trip. Per NTS convention these stay in the
-// codebase indefinitely as a regression net. The out-of-tree sub-TAG FCP-TL
-// (linearization) depends on facilities this prototype does not carry yet; it
-// comes back with the linearization follow-up.
+// access, copy, reverse, or envelope-from-controls. Per NTS convention these
+// stay in the codebase indefinitely as a regression net. Ticket 3 (§8.2 typed
+// members) closes Year-1 WKB 10 "partial"; Year-2 ring names stay omitted.
+// The out-of-tree sub-TAG FCP-TL (linearization) depends on facilities this
+// prototype does not carry yet; it comes back with the linearization follow-up.
 
 using System;
 using NetTopologySuite.Geometries;
@@ -174,6 +175,78 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
                 + "(the polymorphic base of LinearRing / LineString / CircularString / "
                 + "CompoundCurve). If this returns LinearRing again, the JTS-side "
                 + "FCP-DOVE A/B/C dovetail decision needs to be made here too.");
+
+            var getInterior = typeof(CurvePolygon).GetMethod(nameof(CurvePolygon.GetInteriorRingN),
+                new[] { typeof(int) });
+            Assert.That(getInterior, Is.Not.Null,
+                "FCP-DOVE: CurvePolygon must expose GetInteriorRingN (ST_InteriorRingN)");
+            Assert.That(getInterior.ReturnType, Is.EqualTo(typeof(Curve)),
+                "FCP-DOVE: GetInteriorRingN must return Curve, not LinearRing");
+
+            var numInterior = typeof(CurvePolygon).GetProperty(nameof(CurvePolygon.NumInteriorRings))?.PropertyType;
+            Assert.That(numInterior, Is.EqualTo(typeof(int)),
+                "FCP-DOVE: NumInteriorRings is the Surface<Curve> equivalent of ST_NumInteriorRing");
+        }
+
+        [Test]
+        public void FCP_MEM_copy_preserves_compound_shell_member_subtypes()
+        {
+            var cp = CompoundShellWithLinearHole();
+            var copy = (CurvePolygon)cp.Copy();
+            var cc = (CompoundCurve)copy.ExteriorRing;
+            Assert.That(cc.Curves.Count, Is.EqualTo(2),
+                "FCP-MEM: copied compound shell should have two members");
+            Assert.That(cc.Curves[0], Is.InstanceOf<CircularString>(),
+                "FCP-MEM: copied member 0 should remain a CircularString");
+            Assert.That(cc.Curves[1], Is.InstanceOf<CircularString>(),
+                "FCP-MEM: copied member 1 should remain a CircularString");
+            Assert.That(copy.GetInteriorRingN(0), Is.InstanceOf<LinearRing>(),
+                "FCP-MEM: copied linear hole should remain a LinearRing");
+        }
+
+        [Test]
+        public void FCP_MEM_reverse_preserves_compound_shell_member_subtypes()
+        {
+            var cp = CompoundShellWithLinearHole();
+            var rev = (CurvePolygon)cp.Reverse();
+            var cc = (CompoundCurve)rev.ExteriorRing;
+            Assert.That(rev.ExteriorRing, Is.InstanceOf<CompoundCurve>(),
+                "FCP-MEM: reversed shell should remain a CompoundCurve");
+            Assert.That(cc.Curves.Count, Is.EqualTo(2),
+                "FCP-MEM: reversed compound shell should have two members");
+            Assert.That(cc.Curves[0], Is.InstanceOf<CircularString>(),
+                "FCP-MEM: reversed member 0 should remain a CircularString");
+            Assert.That(cc.Curves[1], Is.InstanceOf<CircularString>(),
+                "FCP-MEM: reversed member 1 should remain a CircularString");
+            Assert.That(rev.GetInteriorRingN(0), Is.InstanceOf<LinearRing>(),
+                "FCP-MEM: reversed linear hole should remain a LinearRing, not a LineString");
+        }
+
+        [Test]
+        public void FCP_REV_reverse_preserves_arc_hole_subtype()
+        {
+            var cp = FlatShellWithArcHole();
+            var rev = (CurvePolygon)cp.Reverse();
+            Assert.That(rev.ExteriorRing, Is.InstanceOf<LinearRing>(),
+                "FCP-REV: reversed linear shell should remain a LinearRing");
+            Assert.That(rev.GetInteriorRingN(0), Is.InstanceOf<CircularString>(),
+                "FCP-REV: reversed arc hole should remain a CircularString");
+            Assert.That(((CurvePolygon)rev.Reverse()).EqualsExact(cp), Is.True,
+                "FCP-REV: double reverse is identity");
+        }
+
+        [Test]
+        public void FCP_ENV_control_envelope_keeps_ring_subtypes()
+        {
+            var cp = CompoundShellWithLinearHole();
+            Assert.That(() => cp.GetHashCode(), Throws.Nothing,
+                "FCP-ENV: envelope-from-controls (GetHashCode) is identity-safe");
+            Assert.That(cp.ExteriorRing, Is.InstanceOf<CompoundCurve>(),
+                "FCP-ENV: control-envelope must not collapse the compound shell");
+            Assert.That(((CompoundCurve)cp.ExteriorRing).Curves[0], Is.InstanceOf<CircularString>(),
+                "FCP-ENV: control-envelope must not collapse compound members");
+            Assert.That(cp.GetInteriorRingN(0), Is.InstanceOf<LinearRing>(),
+                "FCP-ENV: control-envelope must not demote the linear hole");
         }
 
         // ============================================================
@@ -210,6 +283,36 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(new CurvePolygon(ls, _factory).ExteriorRing, Is.InstanceOf<LinearRing>());
             Assert.That(new CurvePolygon(cs, _factory).ExteriorRing, Is.InstanceOf<CircularString>());
             Assert.That(new CurvePolygon(cc, _factory).ExteriorRing, Is.InstanceOf<CompoundCurve>());
+        }
+
+        [Test]
+        public void Ticket3_FCP_ConstructorAcceptsClosedLineStringWithoutPromotingToLinearRing()
+        {
+            // Year-1 ring grammar admits LineString; do not silently mint a LinearRing.
+            var ls = Line((0, 0), (10, 0), (10, 10), (0, 10), (0, 0));
+            var cp = new CurvePolygon(ls, _factory);
+            Assert.That(cp.ExteriorRing, Is.InstanceOf<LineString>());
+            Assert.That(cp.ExteriorRing, Is.Not.InstanceOf<LinearRing>(),
+                "FCP / §8.2: a closed LineString shell stays a LineString");
+        }
+
+        [Test]
+        public void Ticket3_FCP_ConstructorAcceptsNullAndEmptyShell()
+        {
+            var emptyCs = new CircularString(
+                _factory.CoordinateSequenceFactory.Create(0, Ordinates.XY), _factory);
+            Assert.That(new CurvePolygon(null, _factory).IsEmpty, Is.True);
+            Assert.That(new CurvePolygon(emptyCs, _factory).IsEmpty, Is.True);
+        }
+
+        [Test]
+        public void Ticket3_FCP_ConstructorRejectsNonYear1RingType()
+        {
+            // Year-1 rings are LS|CS|CC only. A Curve that is none of those is
+            // rejected (the type system already excludes non-Curves).
+            var ex = Assert.Throws<ArgumentException>(() =>
+                new CurvePolygon(new NonYear1Curve(_factory), _factory));
+            Assert.That(ex.Message, Does.Contain("Year-1").And.Contain("NonYear1Curve"));
         }
 
         [Test]
@@ -322,6 +425,37 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(polygon.NumInteriorRings, Is.EqualTo(1));
             Assert.That(polygon.GetInteriorRingN(0), Is.InstanceOf<LinearRing>());
             Assert.That(polygon.GetInteriorRingN(0).NumPoints, Is.EqualTo(5));
+        }
+
+        /// <summary>
+        /// Stand-in Curve that is not a Year-1 <c>ST_CurvePolygon</c> ring type.
+        /// </summary>
+        private sealed class NonYear1Curve : Curve
+        {
+            public NonYear1Curve(GeometryFactory factory) : base(factory) { }
+
+            public override bool IsClosed => true;
+            public override Point StartPoint => Factory.CreatePoint();
+            public override Point EndPoint => Factory.CreatePoint();
+            public override string GeometryType => "NonYear1Curve";
+            public override OgcGeometryType OgcGeometryType => OgcGeometryType.CircularString;
+            public override Coordinate Coordinate => new Coordinate(0, 0);
+            public override Coordinate[] Coordinates => new[] { Coordinate, Coordinate };
+            public override double[] GetOrdinates(Ordinate ordinate) => new[] { 0d, 0d };
+            public override int NumPoints => 2;
+            public override bool IsEmpty => false;
+            public override Geometry Boundary => Factory.CreateMultiPoint();
+            public override bool EqualsExact(Geometry other, double tolerance) => false;
+            public override void Apply(ICoordinateFilter filter) { }
+            public override void Apply(ICoordinateSequenceFilter filter) { }
+            public override void Apply(IGeometryFilter filter) { }
+            public override void Apply(IGeometryComponentFilter filter) { }
+            protected override Geometry CopyInternal() => this;
+            public override void Normalize() { }
+            protected override Envelope ComputeEnvelopeInternal() => new Envelope();
+            protected internal override int CompareToSameClass(object o) => 0;
+            protected internal override int CompareToSameClass(object o, System.Collections.Generic.IComparer<CoordinateSequence> comp) => 0;
+            protected override SortIndexValue SortIndex => SortIndexValue.CircularString;
         }
     }
 }
