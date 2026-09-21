@@ -3,10 +3,11 @@
 //
 // Ticket 1 — NTS Year-1 ST_CurvePolygon WKT ring grammar.
 // ISO/IEC 13249-3 §5.1.67 <ring text> has NINE alternatives and §8.2.1 Desc 2-3
-// types a ring as any ST_Curve; NTS Year-1 reads three of them -- bare
-// lineStringText, circularStringGeometry, compoundCurveGeometry. The six
-// §4.2.1 curve types NTS has no carrier for (CIRCLE, GEODESICSTRING,
-// ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE) are named and refused.
+// types a ring as any ST_Curve; NTS Year-1 reads four of them -- bare
+// lineStringText, circularStringGeometry, circleGeometry (Ticket 19) and
+// compoundCurveGeometry. The five §4.2.1 curve types NTS has no carrier for
+// (GEODESICSTRING, ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE) are
+// named and refused.
 
 using System;
 using NetTopologySuite.Geometries;
@@ -178,9 +179,9 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         /// <summary>
-        /// Top level, not a ring: the six §4.2.1 types are instantiable ISO types
-        /// NTS has no carrier for, so the reader names them rather than calling
-        /// them unknown.
+        /// Top level, not a ring: the five §4.2.1 types NTS still has no carrier
+        /// for are instantiable ISO types, so the reader names them rather than
+        /// calling them unknown. CIRCLE left this list in Ticket 19.
         /// </summary>
         [Test]
         public void Ticket1_TopLevelUnimplementedSqlMmCurveIsNamedNotUnknown()

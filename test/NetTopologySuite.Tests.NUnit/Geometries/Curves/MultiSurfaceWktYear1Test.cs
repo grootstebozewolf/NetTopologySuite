@@ -3,10 +3,11 @@
 //
 // Ticket 7 — NTS Year-1 ST_MultiSurface WKT member grammar.
 // Members: Polygon | CurvePolygon (surfaceMember = polygonText | curvePolygonGeometry).
-// CurvePolygon rings reuse Ticket 1 ReadCurvePolygonText (LS|CS|CC). The six
-// ISO/IEC 13249-3 §5.1.67 curve names NTS has no carrier for (CIRCLE,
-// GEODESICSTRING, ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE) are
-// named and refused via IsUnimplementedSqlMmCurve. TRIANGLE / TIN /
+// CurvePolygon rings reuse Ticket 1 ReadCurvePolygonText (LS|CS|Circle|CC).
+// The five ISO/IEC 13249-3 §5.1.67 curve names NTS has no carrier for
+// (GEODESICSTRING, ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE) are
+// named and refused via IsUnimplementedSqlMmCurve. CIRCLE is a Year-1 ring
+// (Ticket 19) but never a surfaceMember: a Circle is a curve. TRIANGLE / TIN /
 // POLYHEDRALSURFACE / COMPOUNDSURFACE are not Year-1 members. Ticket 9:
 // Year-1 WKB 12 is complete (no longer "partial"); typed members stay in
 // MultiSurfaceMembersYear1Test. Does not remint WKT.

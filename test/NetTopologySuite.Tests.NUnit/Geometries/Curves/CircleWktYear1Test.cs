@@ -255,5 +255,39 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(ex.Message, Does.Contain("CIRCLE"));
             Assert.That(ex.Message, Does.Contain("CompoundCurve"));
         }
+
+        /// <summary>
+        /// The refusal is not conditional on the ring / MultiCurve context. A
+        /// standalone COMPOUNDCURVE is the one production where no Year-1
+        /// member lock is passed down, and WKBReader's curve-member production
+        /// is LineString (2) | CircularString (8) | CompoundCurve (9): a Circle
+        /// component accepted here would write WKB (type 9 over type 18) that
+        /// NTS itself cannot read back.
+        /// </summary>
+        [TestCase("COMPOUNDCURVE (CIRCLE (1 0, 0 1, -1 0))")]
+        [TestCase("COMPOUNDCURVE ((0 0, 1 0), CIRCLE (1 0, 0 1, -1 0))")]
+        [TestCase("CURVEPOLYGON (COMPOUNDCURVE ((0 0, 1 0), CIRCLE (1 0, 0 1, -1 0)))")]
+        public void Ticket19_StandaloneCompoundCurveAlsoRefusesCircleMember(string wkt)
+        {
+            var ex = Assert.Throws<ParseException>(() => _reader.Read(wkt));
+            Assert.That(ex.Message, Does.Contain("CIRCLE"));
+            Assert.That(ex.Message, Does.Contain("CompoundCurve"));
+        }
+
+        /// <summary>
+        /// The WKB side of the same rule: type 9 over a type-18 member is
+        /// refused, so WKT and WKB agree on what a CompoundCurve carries.
+        /// </summary>
+        [Test]
+        public void Ticket19_WkbCompoundCurveOverCircleMemberIsRefused()
+        {
+            byte[] circle = new WKBWriter().Write(_reader.Read("CIRCLE (1 0, 0 1, -1 0)"));
+            var compound = new byte[9 + circle.Length];
+            compound[0] = 1;
+            compound[1] = 9;
+            compound[5] = 1;
+            Buffer.BlockCopy(circle, 0, compound, 9, circle.Length);
+            Assert.Throws<ParseException>(() => new WKBReader().Read(compound));
+        }
     }
 }
