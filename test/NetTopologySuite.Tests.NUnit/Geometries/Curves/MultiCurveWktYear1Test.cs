@@ -2,12 +2,12 @@
 // AI-drafted, human-reviewed.  Assisted-by: Cursor Grok 4.6
 //
 // Ticket 4 — NTS Year-1 ST_MultiCurve WKT member grammar.
-// Members: LineString (bare) | CircularString | CompoundCurve. Reuses Ticket 1
-// ReadCurveText. The six ISO/IEC 13249-3 §5.1.67 curve names NTS has no
-// carrier for (CIRCLE, GEODESICSTRING, ELLIPTICALCURVE, NURBSCURVE, CLOTHOID,
-// SPIRALCURVE) are named and refused; MULTICIRCULARSTRING / MULTICOMPOUNDCURVE
-// reject on read. Ticket 6: Year-1 WKB 11 is complete (no longer "partial").
-// Does not remint WKT.
+// Members: LineString (bare) | CircularString | Circle (Ticket 19) |
+// CompoundCurve. Reuses Ticket 1 ReadCurveText. The five ISO/IEC 13249-3
+// §5.1.67 curve names NTS has no carrier for (GEODESICSTRING,
+// ELLIPTICALCURVE, NURBSCURVE, CLOTHOID, SPIRALCURVE) are named and refused;
+// MULTICIRCULARSTRING / MULTICOMPOUNDCURVE reject on read. Ticket 6: Year-1
+// WKB 11 is complete (no longer "partial"). Does not remint WKT.
 
 using System;
 using NetTopologySuite.Geometries;

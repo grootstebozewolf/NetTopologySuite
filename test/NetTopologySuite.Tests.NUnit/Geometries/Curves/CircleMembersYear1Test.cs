@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // AI-drafted, human-reviewed.  Assisted-by: Cursor Grok 4.6
+// Centre/Radius empty-vs-collinear split + GetControlN copy: Cursor Grok 4.6
 //
 // Ticket 21 — Year-1 ST_Circle typed members (ISO/IEC 13249-3 §4.2.7).
 // GetControlN / GetControlPointN / Centre / Radius expose the three
@@ -134,8 +135,73 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
 
             var centreEx = Assert.Throws<InvalidOperationException>(() => { var _ = empty.Centre; });
             Assert.That(centreEx.Message, Does.Contain("EMPTY"));
+            Assert.That(centreEx.Message, Does.Not.Contain("collinear"));
             var radiusEx = Assert.Throws<InvalidOperationException>(() => { var _ = empty.Radius; });
             Assert.That(radiusEx.Message, Does.Contain("EMPTY"));
+            Assert.That(radiusEx.Message, Does.Not.Contain("collinear"));
+        }
+
+        [Test]
+        public void Ticket21_GetControlN_returns_independent_copy()
+        {
+            var circle = UnitCircle();
+            var c0 = circle.GetControlN(0);
+            Assert.That(c0, Is.EqualTo(new Coordinate(1, 0)));
+            c0.X = 99;
+            c0.Y = 99;
+            Assert.That(circle.GetControlN(0), Is.EqualTo(new Coordinate(1, 0)),
+                "GetControlN must return a copy; mutating it must not change the stored control");
+            Assert.That(circle.CoordinateSequence.GetX(0), Is.EqualTo(1d));
+            Assert.That(circle.CoordinateSequence.GetY(0), Is.EqualTo(0d));
+        }
+
+        [Test]
+        public void Ticket21_GetControlPointN_matches_GetControlN_copy()
+        {
+            var circle = UnitCircle();
+            var expected = new[]
+            {
+                new Coordinate(1, 0),
+                new Coordinate(0, 1),
+                new Coordinate(-1, 0)
+            };
+            for (int i = 0; i < 3; i++)
+            {
+                var control = circle.GetControlN(i);
+                var point = circle.GetControlPointN(i);
+                Assert.That(control, Is.EqualTo(expected[i]));
+                Assert.That(point.Coordinate, Is.EqualTo(expected[i]));
+                point.Coordinate.X = 50 + i;
+                point.Coordinate.Y = 50 + i;
+                Assert.That(circle.GetControlN(i), Is.EqualTo(expected[i]),
+                    "GetControlPointN is built on the copy; mutating the Point must not change the Circle");
+                Assert.That(circle.CoordinateSequence.GetX(i), Is.EqualTo(expected[i].X));
+                Assert.That(circle.CoordinateSequence.GetY(i), Is.EqualTo(expected[i].Y));
+            }
+        }
+
+        [Test]
+        public void Ticket21_Centre_Radius_collinear_message_distinct_from_empty()
+        {
+            var empty = EmptyCircle();
+            var emptyCentre = Assert.Throws<InvalidOperationException>(() => { var _ = empty.Centre; });
+            var emptyRadius = Assert.Throws<InvalidOperationException>(() => { var _ = empty.Radius; });
+
+            // Constructor refuses collinear intake; Apply can still collapse
+            // a constructed circle onto a line (defensive / post-mutation).
+            var mutated = UnitCircle();
+            mutated.Apply(new CollapseControlsToLineFilter());
+
+            var collinearCentre = Assert.Throws<InvalidOperationException>(() => { var _ = mutated.Centre; });
+            var collinearRadius = Assert.Throws<InvalidOperationException>(() => { var _ = mutated.Radius; });
+
+            const string collinearPhrase = "no circumcircle: the three controls are collinear";
+            Assert.That(collinearCentre.Message, Does.Contain(collinearPhrase));
+            Assert.That(collinearRadius.Message, Does.Contain(collinearPhrase));
+            Assert.That(collinearCentre.Message, Does.Not.Contain("EMPTY"));
+            Assert.That(collinearRadius.Message, Does.Not.Contain("EMPTY"));
+            Assert.That(collinearCentre.Message, Is.Not.EqualTo(emptyCentre.Message));
+            Assert.That(collinearRadius.Message, Is.Not.EqualTo(emptyRadius.Message));
         }
 
         [Test]
@@ -215,6 +281,48 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(emptyRev.IsEmpty, Is.True);
         }
 
+        /// <summary>
+        /// The copy keeps the control's ordinates and its concrete
+        /// <see cref="Coordinate"/> subtype, so Z / M read the same through
+        /// the typed accessors as through the sequence.
+        /// </summary>
+        [TestCase("CIRCLE Z (1 0 5, 0 1 5, -1 0 5)", 5d, double.NaN)]
+        [TestCase("CIRCLE M (1 0 7, 0 1 7, -1 0 7)", double.NaN, 7d)]
+        [TestCase("CIRCLE ZM (1 0 5 7, 0 1 5 7, -1 0 5 7)", 5d, 7d)]
+        public void Ticket21_ControlCopyKeepsZAndM(string wkt, double z, double m)
+        {
+            var circle = (Circle)_reader.Read(wkt);
+            var control = circle.GetControlN(0);
+
+            Assert.That(control.X, Is.EqualTo(1d));
+            Assert.That(control.Y, Is.EqualTo(0d));
+            Assert.That(control.Z, Is.EqualTo(z));
+            Assert.That(control.M, Is.EqualTo(m));
+            Assert.That(circle.GetControlPointN(0).Coordinate.GetType(),
+                Is.EqualTo(control.GetType()));
+        }
+
+        /// <summary>
+        /// Why the collinear state is worth naming: such a value still writes
+        /// WKT and WKB, and both readers then refuse what it wrote. Which
+        /// refusal type is the reader's business, so accept either.
+        /// </summary>
+        [Test]
+        public void Ticket21_CollinearAfterMutation_isWrittenButNotReadable()
+        {
+            var circle = UnitCircle();
+            circle.Apply(new CollapseControlsToLineFilter());
+
+            string wkt = circle.AsText();
+            Assert.That(wkt, Does.StartWith("CIRCLE"));
+            Assert.That(() => _reader.Read(wkt),
+                Throws.InstanceOf<ArgumentException>().Or.InstanceOf<ParseException>());
+
+            byte[] wkb = _wkbWriter.Write(circle);
+            Assert.That(() => _wkbReader.Read(wkb),
+                Throws.InstanceOf<ArgumentException>().Or.InstanceOf<ParseException>());
+        }
+
         [Test]
         public void Ticket21_ConstructorStillRejectsCollinear()
         {
@@ -253,6 +361,22 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             var leftover = Assert.Throws<ParseException>(() =>
                 _reader.Read("GEODESICSTRING (0 0, 10 0, 10 10)"));
             Assert.That(leftover.Message, Does.Contain("not implemented"));
+        }
+
+        /// <summary>
+        /// Mutates a Circle's three controls onto a line so Centre/Radius can
+        /// exercise the collinear failure (the constructor refuses this intake).
+        /// </summary>
+        private sealed class CollapseControlsToLineFilter : ICoordinateSequenceFilter
+        {
+            public bool Done => false;
+            public bool GeometryChanged => true;
+
+            public void Filter(CoordinateSequence seq, int i)
+            {
+                seq.SetX(i, i);
+                seq.SetY(i, 0d);
+            }
         }
     }
 }

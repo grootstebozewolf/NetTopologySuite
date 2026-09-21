@@ -1402,10 +1402,10 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
         /// <param name="ordinateFlags">A flag indicating the ordinates to expect.</param>
         /// <param name="year1Members">
         ///   When <c>true</c>, this <c>COMPOUNDCURVE</c> is an NTS Year-1
-        ///   <c>CURVEPOLYGON</c> ring or <c>MULTICURVE</c> member: members are
-        ///   <c>LineString</c> or <c>CircularString</c>, and a nested
+        ///   <c>CURVEPOLYGON</c> ring or <c>MULTICURVE</c> member, and a nested
         ///   <c>COMPOUNDCURVE</c> -- which ISO/IEC 13249-3 §5.1.67 does admit --
-        ///   is refused, not flattened.
+        ///   is refused rather than spliced flat. A <c>CIRCLE</c> component is
+        ///   refused either way: no <c>CompoundCurve</c> carries one.
         /// </param>
         /// <returns>A <c>CompoundCurve</c> specified by the next token in the stream.</returns>
         private Geometries.Curves.CompoundCurve ReadCompoundCurveText(TokenStream tokens, GeometryFactory factory, Ordinates ordinateFlags, bool year1Members = false)
@@ -1428,13 +1428,18 @@ private Point ReadPointText(TokenStream tokens, GeometryFactory factory, Ordinat
                         "ring or MultiCurve member is contiguous LineString | CircularString members. " +
                         "ISO/IEC 13249-3 §5.1.67 admits the nesting; NTS Year-1 refuses it rather than flattening it away.");
                 }
-                if (year1Members && HasTypeNameWithDimSuffix(LookAheadWord(tokens), WKTConstants.CIRCLE))
+                if (HasTypeNameWithDimSuffix(LookAheadWord(tokens), WKTConstants.CIRCLE))
                 {
+                    // Unconditional, unlike the nested-COMPOUNDCURVE gate above:
                     // CIRCLE is Year-1 as a MultiCurve member / CurvePolygon ring,
-                    // not as a CompoundCurve component (those stay LS|CS).
+                    // never as a CompoundCurve component (those stay LS|CS). A
+                    // standalone COMPOUNDCURVE is no exception -- WKBReader's
+                    // curve-member production is 2 | 8 | 9, so a Circle component
+                    // accepted here would write WKB that NTS cannot read back.
                     throw new ParseException(
                         "CIRCLE is not a Year-1 CompoundCurve member: a Year-1 CompoundCurve " +
-                        "ring or MultiCurve member is contiguous LineString | CircularString members.");
+                        "is contiguous LineString | CircularString members, in a CurvePolygon " +
+                        "ring, a MultiCurve member or standalone.");
                 }
                 var curve = ReadCurveText(tokens, factory, ordinateFlags);
                 curves.Add(curve);
