@@ -6,7 +6,8 @@
 //   at grootstebozewolf/jts#1, AI-generated portions are dedicated to
 //   CC0-1.0; human curation falls under the NTS BSD-3-Clause grant.
 //
-//   Assisted-by: Cursor Grok 4.6; Ticket 21 typed members: Cursor Grok 4.6
+//   Assisted-by: Cursor Grok 4.6; Ticket 21 typed members: Cursor Grok 4.6;
+//   Centre/Radius exception split + GetControlN copy: Cursor Grok 4.6
 //
 // Status: PRODUCTION (structure + Year-1 WKT + WKB type 18 + typed members).
 // Year-1 CIRCLE WKT + WKB 18 is complete (Tickets 19–21; no longer partial).
@@ -40,7 +41,8 @@ namespace NetTopologySuite.Geometries.Curves
     /// circumcircle; a 3D centre is not defined (Z/M on <see cref="Centre"/>
     /// are <see cref="Coordinate.NullOrdinate"/>). <c>CIRCLE EMPTY</c> has
     /// <see cref="NumPoints"/> 0; <see cref="Centre"/> and <see cref="Radius"/>
-    /// throw <see cref="InvalidOperationException"/>.
+    /// throw <see cref="InvalidOperationException"/> (empty and collinear
+    /// failures use distinct messages).
     /// <see cref="Length"/> is <c>2πr</c> over the locus. The envelope is the
     /// axis-aligned box of the full circle. <see cref="Geometry.Reverse()"/>
     /// of a non-empty <c>Circle</c> stays this type with the three controls
@@ -110,12 +112,13 @@ namespace NetTopologySuite.Geometries.Curves
         public override int NumPoints => _points.Count;
 
         /// <summary>
-        /// Returns circumference control <paramref name="n"/> as a
-        /// <see cref="Coordinate"/> (0-based). This is the stored control,
-        /// not a linearized dump.
+        /// Returns a copy of circumference control <paramref name="n"/> as a
+        /// <see cref="Coordinate"/> (0-based). This is an independent copy of
+        /// the stored control, not a linearized dump and not a live view into
+        /// the sequence.
         /// </summary>
         /// <param name="n">Control index: 0, 1 or 2 on a non-empty circle.</param>
-        /// <returns>The stored circumference control.</returns>
+        /// <returns>A copy of the stored circumference control.</returns>
         /// <exception cref="ArgumentOutOfRangeException">
         /// When <paramref name="n"/> is outside <c>0..NumPoints-1</c>
         /// (including any index on <c>CIRCLE EMPTY</c>).
@@ -127,15 +130,16 @@ namespace NetTopologySuite.Geometries.Curves
                 throw new ArgumentOutOfRangeException(nameof(n), n,
                     "Circle control index must be in 0..NumPoints-1. CIRCLE EMPTY has no controls.");
             }
-            return _points.GetCoordinate(n);
+            return _points.GetCoordinateCopy(n);
         }
 
         /// <summary>
         /// Returns circumference control <paramref name="n"/> as a
-        /// <see cref="Point"/> created by this geometry's factory.
+        /// <see cref="Point"/> created by this geometry's factory from a copy
+        /// of the stored control (<see cref="GetControlN"/>).
         /// </summary>
         /// <param name="n">Control index: 0, 1 or 2 on a non-empty circle.</param>
-        /// <returns>A <see cref="Point"/> at the stored circumference control.</returns>
+        /// <returns>A <see cref="Point"/> at a copy of the stored control.</returns>
         /// <exception cref="ArgumentOutOfRangeException">
         /// When <paramref name="n"/> is outside <c>0..NumPoints-1</c>
         /// (including any index on <c>CIRCLE EMPTY</c>).
@@ -157,14 +161,17 @@ namespace NetTopologySuite.Geometries.Curves
         /// on the controls via <see cref="GetControlN"/>.
         /// </remarks>
         /// <exception cref="InvalidOperationException">
-        /// When this value is empty (<c>CIRCLE EMPTY</c> has no circumcircle).
+        /// When this value is empty (<c>CIRCLE EMPTY</c> has no circumcircle),
+        /// or when the three controls are collinear (no circumcircle).
         /// </exception>
         public Coordinate Centre
         {
             get
             {
-                if (!TryGetCircumcircle(out var centre, out _))
+                if (IsEmpty)
                     throw new InvalidOperationException("Centre is undefined for CIRCLE EMPTY.");
+                if (!TryGetCircumcircle(out var centre, out _))
+                    throw new InvalidOperationException("no circumcircle: the three controls are collinear");
                 return centre;
             }
         }
@@ -178,14 +185,17 @@ namespace NetTopologySuite.Geometries.Curves
         /// answer (CircularString locus honesty).
         /// </remarks>
         /// <exception cref="InvalidOperationException">
-        /// When this value is empty (<c>CIRCLE EMPTY</c> has no circumcircle).
+        /// When this value is empty (<c>CIRCLE EMPTY</c> has no circumcircle),
+        /// or when the three controls are collinear (no circumcircle).
         /// </exception>
         public double Radius
         {
             get
             {
-                if (!TryGetCircumcircle(out _, out double radius))
+                if (IsEmpty)
                     throw new InvalidOperationException("Radius is undefined for CIRCLE EMPTY.");
+                if (!TryGetCircumcircle(out _, out double radius))
+                    throw new InvalidOperationException("no circumcircle: the three controls are collinear");
                 return radius;
             }
         }
@@ -461,11 +471,16 @@ namespace NetTopologySuite.Geometries.Curves
         }
 
         /// <summary>
-        /// The circumcircle of the three controls, when the value is non-empty.
+        /// The circumcircle of the three controls, when the value is non-empty
+        /// and the controls are not collinear.
         /// </summary>
         /// <param name="centre">The circumcentre.</param>
         /// <param name="radius">The circumradius.</param>
-        /// <returns><c>false</c> when empty (intake already refused collinear).</returns>
+        /// <returns>
+        /// <c>false</c> when empty or when the three controls are collinear
+        /// (intake refuses collinear, but <see cref="Apply(ICoordinateSequenceFilter)"/>
+        /// can mutate a constructed value onto a line).
+        /// </returns>
         internal bool TryGetCircumcircle(out Coordinate centre, out double radius)
         {
             if (IsEmpty)
