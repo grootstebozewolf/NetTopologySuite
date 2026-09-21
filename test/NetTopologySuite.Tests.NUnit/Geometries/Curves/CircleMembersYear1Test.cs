@@ -281,6 +281,48 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
             Assert.That(emptyRev.IsEmpty, Is.True);
         }
 
+        /// <summary>
+        /// The copy keeps the control's ordinates and its concrete
+        /// <see cref="Coordinate"/> subtype, so Z / M read the same through
+        /// the typed accessors as through the sequence.
+        /// </summary>
+        [TestCase("CIRCLE Z (1 0 5, 0 1 5, -1 0 5)", 5d, double.NaN)]
+        [TestCase("CIRCLE M (1 0 7, 0 1 7, -1 0 7)", double.NaN, 7d)]
+        [TestCase("CIRCLE ZM (1 0 5 7, 0 1 5 7, -1 0 5 7)", 5d, 7d)]
+        public void Ticket21_ControlCopyKeepsZAndM(string wkt, double z, double m)
+        {
+            var circle = (Circle)_reader.Read(wkt);
+            var control = circle.GetControlN(0);
+
+            Assert.That(control.X, Is.EqualTo(1d));
+            Assert.That(control.Y, Is.EqualTo(0d));
+            Assert.That(control.Z, Is.EqualTo(z));
+            Assert.That(control.M, Is.EqualTo(m));
+            Assert.That(circle.GetControlPointN(0).Coordinate.GetType(),
+                Is.EqualTo(control.GetType()));
+        }
+
+        /// <summary>
+        /// Why the collinear state is worth naming: such a value still writes
+        /// WKT and WKB, and both readers then refuse what it wrote. Which
+        /// refusal type is the reader's business, so accept either.
+        /// </summary>
+        [Test]
+        public void Ticket21_CollinearAfterMutation_isWrittenButNotReadable()
+        {
+            var circle = UnitCircle();
+            circle.Apply(new CollapseControlsToLineFilter());
+
+            string wkt = circle.AsText();
+            Assert.That(wkt, Does.StartWith("CIRCLE"));
+            Assert.That(() => _reader.Read(wkt),
+                Throws.InstanceOf<ArgumentException>().Or.InstanceOf<ParseException>());
+
+            byte[] wkb = _wkbWriter.Write(circle);
+            Assert.That(() => _wkbReader.Read(wkb),
+                Throws.InstanceOf<ArgumentException>().Or.InstanceOf<ParseException>());
+        }
+
         [Test]
         public void Ticket21_ConstructorStillRejectsCollinear()
         {

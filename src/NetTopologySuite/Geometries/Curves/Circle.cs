@@ -117,6 +117,17 @@ namespace NetTopologySuite.Geometries.Curves
         /// the stored control, not a linearized dump and not a live view into
         /// the sequence.
         /// </summary>
+        /// <remarks>
+        /// A copy, unlike <see cref="LineString.GetCoordinateN"/>, because
+        /// three non-collinear controls is a constructor invariant
+        /// (<see cref="CircularArcGeometry.TryCircle"/>): a live control would
+        /// let a caller drive the value collinear, and the WKT and WKB readers
+        /// both refuse to read that shape back. The writable doors left are
+        /// <see cref="CoordinateSequence"/>, <see cref="Coordinates"/> (the
+        /// live backing array) and the <c>Apply</c> filters;
+        /// <see cref="Centre"/> and <see cref="Radius"/> name that state
+        /// rather than calling it empty.
+        /// </remarks>
         /// <param name="n">Control index: 0, 1 or 2 on a non-empty circle.</param>
         /// <returns>A copy of the stored circumference control.</returns>
         /// <exception cref="ArgumentOutOfRangeException">
@@ -180,9 +191,11 @@ namespace NetTopologySuite.Geometries.Curves
         /// The planar (XY) circumradius of the three circumference controls.
         /// </summary>
         /// <remarks>
-        /// Exact XY distance from <see cref="Centre"/> to any control. A 3D
-        /// radius is not defined; Z/M on the controls do not enter the
-        /// answer (CircularString locus honesty).
+        /// Exact XY distance from <see cref="Centre"/> to a control -- the
+        /// lexicographically first, which is the one the canonicalizing
+        /// circumcircle measures; the other two agree to rounding, not bit for
+        /// bit. A 3D radius is not defined; Z/M on the controls do not enter
+        /// the answer (CircularString locus honesty).
         /// </remarks>
         /// <exception cref="InvalidOperationException">
         /// When this value is empty (<c>CIRCLE EMPTY</c> has no circumcircle),
@@ -478,8 +491,9 @@ namespace NetTopologySuite.Geometries.Curves
         /// <param name="radius">The circumradius.</param>
         /// <returns>
         /// <c>false</c> when empty or when the three controls are collinear
-        /// (intake refuses collinear, but <see cref="Apply(ICoordinateSequenceFilter)"/>
-        /// can mutate a constructed value onto a line).
+        /// (intake refuses collinear, but <see cref="CoordinateSequence"/>,
+        /// <see cref="Coordinates"/> and the <c>Apply</c> filters can each
+        /// mutate a constructed value onto a line).
         /// </returns>
         internal bool TryGetCircumcircle(out Coordinate centre, out double radius)
         {
