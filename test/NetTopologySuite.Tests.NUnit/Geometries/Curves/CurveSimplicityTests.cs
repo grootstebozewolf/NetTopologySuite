@@ -32,21 +32,51 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void TwoArcsTangentAtSharedVertex_StaysFailClosed()
+        public void TwoArcsTangentAtSharedVertex_IsSimpleByExactTangency()
         {
-            // FLIPPED by the rung-4 review: this used to be checked-true
-            // ("the only locus contact is the permitted vertex (2,0)"), but
-            // that verdict rested on the tangency discriminant computing an
-            // EXACT zero — dyadic luck. A 1-ulp perturbation of either
-            // circle turns the touch into a crossing pair ~sqrt(eps) apart,
-            // indistinguishable at double precision, and the review
-            // demonstrated wrong checked verdicts in both directions inside
-            // that band. The kernel now refuses it (AmbiguousTangency,
-            // continued at issue #641).
+            // Flipped twice. Checked-true until the rung-4 review showed the
+            // verdict rested on a float discriminant computing an EXACT zero
+            // (dyadic luck — inside the band, a touch and a crossing pair
+            // ~sqrt(eps) apart look the same), then fail-closed. Rung 5
+            // (#641) decides the band in exact rational arithmetic: the
+            // circles (centres (1,0) and (3,0), r = 1) are EXACTLY externally
+            // tangent at (2,0), the permitted connecting vertex — simple.
             var cs = Cs((0, 0), (1, 1), (2, 0), (3, -1), (4, 0));
-            Assert.That(() => cs.IsSimple,
-                Throws.TypeOf<NotSupportedException>().With.Message.Contains("tangent"));
-            Assert.That(() => cs.IsRing, Throws.TypeOf<NotSupportedException>());
+            Assert.That(cs.IsSimple, Is.True);
+            Assert.That(cs.IsRing, Is.False, "open");
+        }
+
+        [Test]
+        public void TangentPairPerturbedOneUlp_IsDecidedByAnchoredCrossing()
+        {
+            // Nudge the second arc's intermediate point by one ulp and its
+            // circle is no longer tangent: both circles still pass through
+            // (2,0), so the exact discriminant is POSITIVE — a crossing pair
+            // inside the float band. Rung 5 (#641) places it exactly: (2,0)
+            // lies on both circles (the anchor), so the second crossing is
+            // its rational reflection across the line of centres — and it
+            // lies off the arcs. The only contact is the permitted vertex.
+            var cs = Cs((0, 0), (1, 1), (2, 0), (3, Math.BitIncrement(-1.0)), (4, 0));
+            Assert.That(cs.IsSimple, Is.True);
+        }
+
+        [Test]
+        public void MultiCurve_UnanchoredCrossingPairInBand_StaysFailClosed()
+        {
+            // The residue rung 5 keeps (#981): circle A centre (0,0) r = 2,
+            // circle B centre (3,0) r = 1 + 2^-50 — they cross in two points
+            // ~3e-8 apart near (2,0), deep in the float band, and no control
+            // point of either arc lies on the other circle, so neither
+            // crossing is rational. Exact arithmetic knows the pair exists
+            // but cannot place it on or off the arcs; refuse.
+            double d = Math.Pow(2, -50);
+            var mc = new MultiCurve(new Curve[]
+            {
+                Cs((0, 2), (2, 0), (0, -2)),
+                Cs((2 - d, 0), (3, 1 + d), (4 + d, 0)),
+            }, _factory);
+            Assert.That(() => mc.IsSimple,
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("tangent").And.Message.Contains("981"));
         }
 
         [Test]
@@ -154,21 +184,47 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void NonAdjacentTangentTouch_StaysFailClosed()
+        public void NonAdjacentTangentTouch_IsNotSimpleByExactTangency()
         {
-            // FLIPPED by the rung-4 review: the last chord runs along y = 1,
-            // exactly tangent to the first arc's circle at (1,1). The old
-            // definite-false rested on the circle-line discriminant being an
-            // EXACT zero — inside the band where a touch, a close crossing
-            // pair, and a near-miss are indistinguishable at double
-            // precision (the b and c terms carry the float circumradius), so
-            // the kernel now refuses (AmbiguousTangency, issue #641). The
-            // deferral rule keeps NonAdjacentTouch_IsNotSimple decided: its
-            // refutation comes from a transversal crossing, which is sound
-            // regardless of any banded pair elsewhere in the scan.
+            // The last chord runs along y = 1, tangent to the first arc's
+            // circle at (1,1). Fail-closed since the rung-4 review (the float
+            // circle-line discriminant cannot tell a touch from a close
+            // crossing pair); rung 5 (#641) decides it exactly: the
+            // discriminant r²·|v|² − (v × (C − q0))² is exactly zero, and the
+            // rational foot of the perpendicular, (1,1), lies on the chord
+            // and on the first arc — a non-adjacent contact, not simple.
             var cs = Cs((0, 0), (1, 1), (2, 0), (3, 0.5), (4, 1), (2.5, 1), (1, 1));
-            Assert.That(() => cs.IsSimple,
-                Throws.TypeOf<NotSupportedException>().With.Message.Contains("tangent"));
+            Assert.That(cs.IsSimple, Is.False);
+        }
+
+        [Test]
+        public void ExactlyCocircularDistinctTriples_IsSimpleRing()
+        {
+            // Three arcs on the circle x² + y² = 25 through different control
+            // triples. Already simple before rung 5 (the canonicalized double
+            // circumcentres happen to agree); since rung 5 (#641) "same
+            // circle" is an EXACT comparison of the rational circles, and on
+            // one circle the overlap/touch decision is exact side-of-chord
+            // arithmetic — this pins that path.
+            var cs = Cs((5, 0), (4, 3), (0, 5), (-3, 4), (-5, 0), (0, -5), (5, 0));
+            Assert.That(cs.IsSimple, Is.True);
+            Assert.That(cs.IsRing, Is.True);
+        }
+
+        [Test]
+        public void MultiCurve_NearMissInTangencyBand_IsSimple()
+        {
+            // Circle A: centre (0,0), r = 2. Circle B: centre (3,0),
+            // r = 1 − 2^-50 — a gap of 2^-50 from external tangency, deep
+            // inside the float band. The exact discriminant is negative: the
+            // circles do not meet, so the members are disjoint.
+            double d = Math.Pow(2, -50);
+            var mc = new MultiCurve(new Curve[]
+            {
+                Cs((0, 2), (2, 0), (0, -2)),
+                Cs((2 + d, 0), (3, 1 - d), (4 - d, 0)),
+            }, _factory);
+            Assert.That(mc.IsSimple, Is.True);
         }
 
         [Test]
@@ -203,21 +259,19 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         // consecutive coordinate pair. ---------------------------------------
 
         [Test]
-        public void CompoundLineTangentThroughArc_StaysFailClosed()
+        public void CompoundLineTangentThroughArc_IsNotSimpleByExactTangency()
         {
-            // FLIPPED by the rung-4 review: BOTH of this compound's
-            // non-trivial contacts are exact line tangencies (x = 2 at
-            // (2,0); y = 1 at (1,1)) — every refuting pair sits in the
-            // tangency band, so with no transversal witness left the value
-            // fail-closes (AmbiguousTangency, issue #641) instead of
-            // resting a definite false on exact-zero discriminants.
+            // Both of this compound's non-trivial contacts are line
+            // tangencies (x = 2 at (2,0); y = 1 at (1,1)). Fail-closed since
+            // the rung-4 review; rung 5 (#641) decides both exactly — the
+            // y = 1 chord touches the arc at (1,1), interior to the arc and
+            // not a permitted vertex: not simple.
             var cc = new CompoundCurve(new Curve[]
             {
                 Cs((0, 0), (1, 1), (2, 0)),
                 Line((2, 0), (2, 1), (0, 1)),
             }, _factory);
-            Assert.That(() => cc.IsSimple,
-                Throws.TypeOf<NotSupportedException>().With.Message.Contains("tangent"));
+            Assert.That(cc.IsSimple, Is.False);
         }
 
         [Test]
@@ -364,24 +418,40 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void MultiCurve_NearTangentMembers_StayFailClosed()
+        public void MultiCurve_NearTangentMembers_IsNotSimpleByExactTangency()
         {
-            // Rung-4 review witness W1, pinned: both members pass through
-            // the shared control point (2,0) — it is the mid control of
-            // both arcs, so it is on both loci, interior to both open
-            // members — and the circumcircles are exactly internally
-            // tangent there. Before the tangency band this answered a
-            // SILENT WRONG TRUE (the kernel's h2 rounded negative and the
-            // contact vanished); §10.3.1 Desc 4 refutes it. The honest
-            // double-precision answer is the fail-closed refusal.
+            // Rung-4 review witness W1: both members pass through the shared
+            // control point (2,0) — the mid control of both arcs, so on both
+            // loci and interior to both open members — and the circumcircles
+            // are exactly internally tangent there. Before the tangency band
+            // this answered a SILENT WRONG TRUE (h2 rounded negative and the
+            // contact vanished); the band made it fail closed; rung 5 (#641)
+            // decides the exact discriminant (zero) and places the touch
+            // point exactly on both arcs — §10.3.1 Desc 4 refutes it.
             var mc = new MultiCurve(new Curve[]
             {
                 Cs((0, 2), (2, 0), (0, -2)),
                 Cs((0.8466466098542542, 1.1533533901457458), (2, 0),
                    (0.8466466098542542, -1.1533533901457458)),
             }, _factory);
-            Assert.That(() => mc.IsSimple,
-                Throws.TypeOf<NotSupportedException>().With.Message.Contains("tangent"));
+            Assert.That(mc.IsSimple, Is.False);
+        }
+
+        [Test]
+        public void MultiCurve_MemberResidueDoesNotPreemptCrossMemberRefutation()
+        {
+            // #641 note (c): the first member is undecidable on its own, but
+            // the second and third members cross each other
+            // transversally — a definite refutation that must win over the
+            // deferred member residue (here a Desc-6-degenerate segment,
+            // whose chain cannot even be built).
+            var mc = new MultiCurve(new Curve[]
+            {
+                Cs((0, 0), (1, 1), (0, 0)),
+                Line((10, 0), (12, 2)),
+                Line((10, 2), (12, 0)),
+            }, _factory);
+            Assert.That(mc.IsSimple, Is.False);
         }
 
         [Test]
@@ -430,15 +500,37 @@ namespace NetTopologySuite.Tests.NUnit.Geometries.Curves
         }
 
         [Test]
-        public void NearlyCocircularAdjacentPair_StaysFailClosed()
+        public void NearlyCocircularAdjacentPair_IsDecidedExactly()
         {
             // The second segment's circumcircle differs from the first's by
-            // ~1e-13 in the centre: too close to distinguish "same circle"
-            // (interval overlap) from "two circles" (radical line) in double
-            // precision. The kernel refuses rather than guessing.
+            // ~1e-13 in the centre: refused before rung 5 (too close to tell
+            // "same circle" from "two circles" in double precision). Exactly,
+            // the circles are distinct and both pass through (2,0) and
+            // (1,-1) — those ARE the two crossings. (1,-1) is not on the
+            // upper first arc, so the only contact is the connecting vertex,
+            // and the 1e-13 gap keeps the open chain from closing: simple.
             var cs = Cs((0, 0), (1, 1), (2, 0), (1, -1), (1e-13, 0));
-            var ex = Assert.Throws<NotSupportedException>(() => _ = cs.IsSimple);
-            Assert.That(ex.Message, Does.Contain("cocircular"));
+            Assert.That(cs.IsSimple, Is.True);
+            Assert.That(cs.IsRing, Is.False, "open by 1e-13");
+        }
+
+        [Test]
+        public void NearlyCocircularUnanchoredPair_StaysFailClosed()
+        {
+            // The residue rung 5 keeps (#981): the upper arcs of x² + y² = 25
+            // and of the same circle shifted 2^-45 in x. The circles are
+            // distinct but within the cocircular tolerance, and they cross at
+            // x = 2^-46 with an irrational y near 5 — on both arcs, and no
+            // control point lies on the other circle, so no crossing is
+            // rational. Refused rather than guessed.
+            double d = Math.Pow(2, -45);
+            var mc = new MultiCurve(new Curve[]
+            {
+                Cs((-3, 4), (0, 5), (3, 4)),
+                Cs((-3 + d, 4), (d, 5), (3 + d, 4)),
+            }, _factory);
+            Assert.That(() => mc.IsSimple,
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("cocircular"));
         }
     }
 }

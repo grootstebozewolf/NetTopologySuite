@@ -174,8 +174,10 @@ namespace NetTopologySuite.Geometries.Curves
         /// zero exactly when collinear. Plain double arithmetic — the sign
         /// selects the traversal direction and the zero selects Desc 8b;
         /// near-degenerate inputs stay on the arc path with a large radius.
+        /// The exact predicates (<see cref="ExactArcArithmetic.TryArc"/>)
+        /// check their classification against this one.
         /// </summary>
-        private static double OrientationIndex(Coordinate p0, Coordinate p1, Coordinate p2)
+        internal static double OrientationIndex(Coordinate p0, Coordinate p1, Coordinate p2)
         {
             return (p1.X - p0.X) * (p2.Y - p0.Y) - (p1.Y - p0.Y) * (p2.X - p0.X);
         }
@@ -186,7 +188,9 @@ namespace NetTopologySuite.Geometries.Curves
         // loci meet, mirroring the composition of the Proofs oracle's
         // RING_SIMPLE lane (arc-arc via the radical line, exact-cocircular
         // via angular intervals, arc-chord via the circle-line quadratic,
-        // chord-chord via RobustLineIntersector).
+        // chord-chord via RobustLineIntersector). Since rung 5 (#641) the
+        // cocircular arm and the tangency bands are decided in exact
+        // rational arithmetic (ExactArcArithmetic).
         // ---------------------------------------------------------------
 
         /// <summary>Outcome of <see cref="SegmentPairContacts"/>.</summary>
@@ -196,11 +200,12 @@ namespace NetTopologySuite.Geometries.Curves
             Decided,
 
             /// <summary>
-            /// The two arcs' circumcircles are too close to distinguish from
-            /// one circle at double precision, but not exactly equal — the
-            /// kernel refuses to guess between "same circle, interval
-            /// overlap" and "two circles, radical line" (a wrong guess here
-            /// flips a 1-dimensional overlap into nothing, or vice versa).
+            /// The two arcs' circumcircles are within the cocircular
+            /// tolerance but EXACTLY distinct, and they cross at two
+            /// irrational points (no control point on both circles) that
+            /// double precision cannot place. (Exactly equal
+            /// circles, misses and single touches in this band are decided
+            /// exactly since rung 5, #641.)
             /// </summary>
             AmbiguousCocircular,
 
@@ -225,8 +230,10 @@ namespace NetTopologySuite.Geometries.Curves
             /// rung-4 review demonstrated wrong CHECKED verdicts in both
             /// directions (a missed contact turned a non-simple MultiCurve
             /// silently simple; a phantom split pair turned a Desc-11-clean
-            /// CurvePolygon definite-false). Refusing beats guessing; exact
-            /// arithmetic (the oracle's path) is the way to widen this.
+            /// CurvePolygon definite-false). Since rung 5 (#641) the exact
+            /// discriminant decides misses and single touches in the band;
+            /// this result now means an exact crossing PAIR inside it that has
+            /// no rational anchor (no control point on both carriers).
             /// </summary>
             AmbiguousTangency,
         }
@@ -282,25 +289,49 @@ namespace NetTopologySuite.Geometries.Curves
                 return SegmentPairResult.IllConditioned;
 
             if (aIsArc && !bIsArc)
-                return ArcChordContacts(ca, ra, ArcOf(p0, p1, p2, ca), q0, q2, contacts);
+                return ArcChordContacts(ca, ra, ArcOf(p0, p1, p2, ca), p0, p1, p2, q0, q2, contacts);
             if (!aIsArc)
-                return ArcChordContacts(cb, rb, ArcOf(q0, q1, q2, cb), p0, p2, contacts);
+                return ArcChordContacts(cb, rb, ArcOf(q0, q1, q2, cb), q0, q1, q2, p0, p2, contacts);
 
-            var arcA = ArcOf(p0, p1, p2, ca);
-            var arcB = ArcOf(q0, q1, q2, cb);
-            bool exactlyCocircular = ca.Equals2D(cb) && ra == rb;
-            if (!exactlyCocircular)
+            // Circumcircles within the cocircular tolerance — bit-identical
+            // ones included — go to exact arithmetic (615-h rung 5, #641):
+            // the rational circles are compared EXACTLY, so "same circle"
+            // no longer rests on float equality of canonicalized triples,
+            // and a genuinely different near-equal pair is decided by its
+            // exact discriminant sign where that is enough.
+            double tol = RelativeTolerance * (1 + System.Math.Max(ra, rb));
+            if (ca.Distance(cb) <= tol && System.Math.Abs(ra - rb) <= tol)
+                return NearCocircularContacts(p0, p1, p2, q0, q1, q2, contacts, ref overlap);
+            return TwoCircleContacts(ca, ra, ArcOf(p0, p1, p2, ca), cb, rb, ArcOf(q0, q1, q2, cb),
+                p0, p1, p2, q0, q1, q2, contacts);
+        }
+
+        /// <summary>
+        /// The near-cocircular band, decided exactly (615-h rung 5, #641):
+        /// exactly equal rational circles take the exact interval/touch
+        /// decision; distinct circles are decided by the exact discriminant
+        /// sign when it says "no contact" or "one touch point", and an
+        /// anchored crossing pair is placed exactly. Two distinct near-equal
+        /// circles crossing at two irrational points stay refused (the
+        /// residue the lane keeps, issue #981).
+        /// </summary>
+        private static SegmentPairResult NearCocircularContacts(
+            Coordinate p0, Coordinate p1, Coordinate p2,
+            Coordinate q0, Coordinate q1, Coordinate q2,
+            System.Collections.Generic.List<Coordinate> contacts, ref bool overlap)
+        {
+            if (!ExactArcArithmetic.TryArc(p0, p1, p2, out var a)
+                || !ExactArcArithmetic.TryArc(q0, q1, q2, out var b))
+                return SegmentPairResult.AmbiguousCocircular;
+            if (a.SameCircle(b))
             {
-                double tol = RelativeTolerance * (1 + System.Math.Max(ra, rb));
-                if (ca.Distance(cb) <= tol && System.Math.Abs(ra - rb) <= tol)
-                    return SegmentPairResult.AmbiguousCocircular;
-            }
-            if (exactlyCocircular)
-            {
-                CocircularContacts(ca, arcA, p0, p2, arcB, q0, q2, contacts, ref overlap);
+                ExactArcArithmetic.CocircularContacts(a, p0, p2, b, q0, q2, contacts, ref overlap);
                 return SegmentPairResult.Decided;
             }
-            return TwoCircleContacts(ca, ra, arcA, cb, rb, arcB, contacts);
+            return ExactArcArithmetic.TwoCircleDecision(a, b, contacts) > 0
+                   && !ExactArcArithmetic.TryPlaceCrossingPair(a, b, contacts)
+                ? SegmentPairResult.AmbiguousCocircular
+                : SegmentPairResult.Decided;
         }
 
         /// <summary>Sweep frame of one arc: start angle, width, direction.</summary>
@@ -360,6 +391,7 @@ namespace NetTopologySuite.Geometries.Curves
 
         private static SegmentPairResult ArcChordContacts(
             Coordinate centre, double radius, ArcFrame arc,
+            Coordinate p0, Coordinate p1, Coordinate p2,
             Coordinate q0, Coordinate q2,
             System.Collections.Generic.List<Coordinate> contacts)
         {
@@ -375,11 +407,22 @@ namespace NetTopologySuite.Geometries.Curves
             // ~sqrt(eps)·scale apart, and a near-miss are indistinguishable
             // (a chord tangency computed to EXACT zeros is no safer: b and c
             // carry the float circumradius). A wrong pick is an unchecked
-            // verdict; refuse the band.
+            // verdict; inside the band the EXACT discriminant sign decides
+            // (615-h rung 5, #641): a miss, or a tangency whose rational
+            // touch point is tested exactly against chord and arc, and an
+            // anchored crossing pair is placed exactly. Only an unanchored
+            // exact crossing pair inside the band stays refused.
             double discMagnitude = a + fx * fx + fy * fy + radius * radius;
             if (System.Math.Abs(disc) <=
                 TangencyGuardFactor * MachineEpsilon * discMagnitude * discMagnitude)
-                return SegmentPairResult.AmbiguousTangency;
+            {
+                if (!ExactArcArithmetic.TryArc(p0, p1, p2, out var exactArc))
+                    return SegmentPairResult.AmbiguousTangency;
+                return ExactArcArithmetic.ArcChordDecision(exactArc, q0, q2, contacts) > 0
+                       && !ExactArcArithmetic.TryPlaceArcChordCrossings(exactArc, q0, q2, contacts)
+                    ? SegmentPairResult.AmbiguousTangency
+                    : SegmentPairResult.Decided;
+            }
             if (disc < 0)
                 return SegmentPairResult.Decided;
             double sq = System.Math.Sqrt(disc);
@@ -409,6 +452,8 @@ namespace NetTopologySuite.Geometries.Curves
         private static SegmentPairResult TwoCircleContacts(
             Coordinate ca, double ra, ArcFrame arcA,
             Coordinate cb, double rb, ArcFrame arcB,
+            Coordinate p0, Coordinate p1, Coordinate p2,
+            Coordinate q0, Coordinate q1, Coordinate q2,
             System.Collections.Generic.List<Coordinate> contacts)
         {
             double d = ca.Distance(cb);
@@ -426,12 +471,26 @@ namespace NetTopologySuite.Geometries.Curves
             // pair 20× the dedup tolerance apart. An EXACT h2 == 0 is no
             // safer: the centres and radii it is built from carry float
             // error themselves. Non-finite h2 (near-concentric d → 0) skips
-            // the band: |h2| is then huge, a definite no-contact.
+            // the band: |h2| is then huge, a definite no-contact. Inside the
+            // band the EXACT discriminant sign decides (615-h rung 5, #641):
+            // a miss, or one touch point tested exactly against both arcs;
+            // only an unanchored exact crossing pair inside the band stays
+            // refused (ExactArcArithmetic.TryPlaceCrossingPair).
             double h2Magnitude = ra * ra + a * a
                 + System.Math.Abs(a) * (d * d + ra * ra + rb * rb) / d;
             if (!double.IsNaN(h2) && !double.IsInfinity(h2)
                 && System.Math.Abs(h2) <= TangencyGuardFactor * MachineEpsilon * h2Magnitude)
-                return SegmentPairResult.AmbiguousTangency;
+            {
+                if (!ExactArcArithmetic.TryArc(p0, p1, p2, out var exactA)
+                    || !ExactArcArithmetic.TryArc(q0, q1, q2, out var exactB))
+                    return SegmentPairResult.AmbiguousTangency;
+                if (exactA.SameCircle(exactB))
+                    return SegmentPairResult.AmbiguousCocircular; // outside the float band: unreachable in practice
+                return ExactArcArithmetic.TwoCircleDecision(exactA, exactB, contacts) > 0
+                       && !ExactArcArithmetic.TryPlaceCrossingPair(exactA, exactB, contacts)
+                    ? SegmentPairResult.AmbiguousTangency
+                    : SegmentPairResult.Decided;
+            }
             if (h2 < 0)
                 return SegmentPairResult.Decided;
             double ux = (cb.X - ca.X) / d, uy = (cb.Y - ca.Y) / d;
@@ -446,52 +505,6 @@ namespace NetTopologySuite.Geometries.Curves
                     contacts.Add(new Coordinate(x, y));
             }
             return SegmentPairResult.Decided;
-        }
-
-        private static void CocircularContacts(
-            Coordinate centre,
-            ArcFrame arcA, Coordinate p0, Coordinate p2,
-            ArcFrame arcB, Coordinate q0, Coordinate q2,
-            System.Collections.Generic.List<Coordinate> contacts, ref bool overlap)
-        {
-            // Normalize each arc to a CCW interval [s, s + w] on the shared
-            // circle. Positive-length overlap iff one interval's start lies
-            // in the other's interior (start coincidence included) — which
-            // also catches the two-reflex case w_A + w_B > 2π.
-            double sA = arcA.Ccw ? arcA.A0 : AngleOf(p2, centre);
-            double sB = arcB.Ccw ? arcB.A0 : AngleOf(q2, centre);
-            if (AngleUtility.NormalizePositive(sB - sA) < arcA.Sweep
-                || AngleUtility.NormalizePositive(sA - sB) < arcB.Sweep)
-            {
-                overlap = true;
-                return;
-            }
-
-            // Touch-only: report endpoints of one arc lying (inclusively) on
-            // the other, as the ORIGINAL endpoint coordinates.
-            AddEndpointContact(q0, centre, arcA, contacts);
-            AddEndpointContact(q2, centre, arcA, contacts);
-            AddEndpointContact(p0, centre, arcB, contacts);
-            AddEndpointContact(p2, centre, arcB, contacts);
-        }
-
-        private static void AddEndpointContact(
-            Coordinate endpoint, Coordinate centre, ArcFrame other,
-            System.Collections.Generic.List<Coordinate> contacts)
-        {
-            if (!OnArc(centre, other, endpoint.X, endpoint.Y))
-                return;
-            foreach (var existing in contacts)
-            {
-                if (existing.Equals2D(endpoint))
-                    return;
-            }
-            contacts.Add(endpoint.Copy());
-        }
-
-        private static double AngleOf(Coordinate p, Coordinate centre)
-        {
-            return System.Math.Atan2(p.Y - centre.Y, p.X - centre.X);
         }
     }
 }

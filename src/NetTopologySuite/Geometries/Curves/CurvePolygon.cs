@@ -150,8 +150,11 @@ namespace NetTopologySuite.Geometries.Curves
         /// 615-h #634): definite <c>false</c> when an implemented ISO/IEC
         /// 13249-3 rule is violated in a ring (closure §8.2.1 Desc 2–3, a
         /// definite-false ring value, or — since rung 3 — a provably
-        /// non-simple ring); a value passing everything still throws naming
-        /// the ring-pair conditions (Desc 11–14, issue #639). Never an
+        /// non-simple ring), a ring pair meeting in more than one point
+        /// (Desc 11, rung 4), a hole outside the shell or inside another hole
+        /// (Desc 12) or a disconnected interior (Desc 13) — the last three
+        /// by exact point-in-ring since rung 5 (#641). A clean value is a
+        /// checked <c>true</c>; the contact kernel's residues throw. Never an
         /// unchecked <c>true</c>.
         /// </summary>
         public override bool IsValid => CurveValidity.IsValid(this);

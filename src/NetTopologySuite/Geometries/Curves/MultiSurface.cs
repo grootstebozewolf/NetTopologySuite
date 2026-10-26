@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Status: PRODUCTION (structure + WKT/WKB) — GEOS / ISO WKB type 12.
 // IsSimple is arc-aware (ISO/IEC 13249-3 §4.2.27's definitional reading:
-// every element's rings simple) and IsValid is arc-aware partial (element
-// propagation, per-element ring conditions, cross-element boundary overlap;
-// the interiors-disjoint condition fail-closes naming issue #641) —
-// NetTopologySuite.Proofs #615 ticket 615-h rung 4, #639. The remaining
+// every element's rings simple) and IsValid is arc-aware (element validity,
+// cross-element boundary overlap, interiors-disjoint by exact containment;
+// element pairs touching away from shared vertices fail closed naming issue
+// #981) — NetTopologySuite.Proofs #615 ticket 615-h rungs 4–5, #639/#641. The remaining
 // metrics and analytic ops (Length, Area, Envelope, Distance, Centroid,
 // InteriorPoint) fail closed with NotSupportedException until arc-aware
 // implementations land; Linearize() is the explicit chord escape hatch.
@@ -106,12 +106,14 @@ namespace NetTopologySuite.Geometries.Curves
         }
 
         /// <summary>
-        /// Arc-aware validity, partial (§10.1.1 Desc 10, §8.2.1, §4.2.27;
-        /// ticket 615-h rung 4, #639): definite <c>false</c> when an element
-        /// provably violates an implemented rule or two element boundaries
-        /// share a 1-D piece; a value passing everything throws naming the
-        /// undecided interiors-disjoint condition — never an unchecked
-        /// <c>true</c>.
+        /// Arc-aware validity (§10.1.1 Desc 10, §8.2.1, §4.2.27; ticket 615-h
+        /// rungs 4–5, #639/#641): definite <c>false</c> when an element is
+        /// invalid, two element boundaries share a 1-D piece, or an exact
+        /// boundary point of one element lies strictly inside another;
+        /// checked <c>true</c> for an all-classical value (the classical
+        /// MultiPolygon rule) or when every inter-element contact is a shared
+        /// vertex. Elements touching elsewhere fail closed (issue #981) —
+        /// never an unchecked <c>true</c>.
         /// </summary>
         public override bool IsValid => CurveValidity.IsValid(this);
 

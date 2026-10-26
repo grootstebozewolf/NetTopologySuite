@@ -7,7 +7,7 @@
 //
 // Arc-aware ST_IsValid (ISO/IEC 13249-3; NetTopologySuite.Proofs #615,
 // tickets 615-g rung 1 / 615-h #634 verdict wiring / 615-h #639 collection
-// arms / ADR-0005). The honesty contract:
+// arms / 615-h #641 containment / ADR-0005). The honesty contract:
 //
 //   * DEFINITE FALSE -- a value violating an implemented clause rule returns
 //     IsValid == false, and TryFindDefiniteInvalidity names the clause: per-
@@ -22,6 +22,11 @@
 //     more than one point or sharing a 1-D piece (§8.2.1 Desc 11), and a
 //     multi-surface element pair whose boundaries share a 1-D piece
 //     (§4.2.27: boundaries may intersect at a finite number of POINTS).
+//     Since rung 5 (#641) also: a hole outside the exterior ring, a hole
+//     inside another hole (§8.2.1 Desc 12), a ring touch graph with a cycle
+//     (Desc 13: disconnected interior), and a multi-surface element pair
+//     with an exact boundary point of one strictly inside the other
+//     (§4.2.27 interiors-disjoint).
 //   * CHECKED TRUE -- a clean CircularString or CompoundCurve is valid:
 //     §7.3.1 Desc 6+7 and §7.10.1 Desc 3+7 are those types' COMPLETE
 //     validity obligations ("simple ∧ closed ⇒ ring" is a definition, not a
@@ -29,16 +34,22 @@
 //     MultiCurve is valid: §10.1.1 Desc 10 (elements well formed) is its
 //     complete obligation -- §10.3.1 Desc 4's inter-member condition defines
 //     ST_IsSimple, not validity (reading pinned in the research doc §2).
-//   * FAIL CLOSED -- a CurvePolygon passing everything still THROWS: with
-//     Desc 11 counted, the remaining conditions (§8.2.1 Desc 12-14: no
-//     spikes/cuts, connected interior -- and hole-inside-shell containment)
-//     are undecided pending arc-aware point-in-ring -- the 615-h lane,
-//     NetTopologySuite.Proofs issue #641. A MultiSurface passing everything
-//     also THROWS: §4.2.27's "interiors shall not intersect" needs the same
-//     containment machinery (#641). The simplicity kernel's own residues
-//     (degenerate segments, near-cocircular band, large-radius conditioning)
-//     also propagate as throws. An UNCHECKED true is never returned; that
-//     silent-green failure mode is what Proofs issue #522 exists to kill.
+//     Since rung 5 (#641) a clean CurvePolygon is checked true too: with
+//     simple rings meeting pairwise in at most one point, Desc 12-14 reduce
+//     to hole containment, no nested holes and an acyclic touch graph, each
+//     decided by EXACT point-in-ring (CurveContainment). A clean MultiSurface
+//     is checked true when it is all-classical (the classical MultiPolygon
+//     rule is §4.2.27) or when every inter-element contact is a vertex both
+//     boundaries share and every boundary segment's exact sample lies
+//     outside the other element.
+//   * FAIL CLOSED -- a MultiSurface element pair touching away from shared
+//     vertices with no refuting sample (the piece between two contacts has
+//     no exact sample yet), and the simplicity kernel's own residues (an
+//     unanchored exact crossing pair inside the tangency or near-cocircular
+//     band, large-radius conditioning) propagate as throws -- the 615-h lane,
+//     NetTopologySuite.Proofs issue #981. An UNCHECKED true is never
+//     returned; that silent-green failure mode is what Proofs issue #522
+//     exists to kill.
 //
 // Whole circles: a single segment with start == end is INVALID here (Desc 6);
 // the spec reserves full circles for ST_Circle (§4.2.7, parked in the zoo
@@ -52,25 +63,26 @@
 // all-classical MultiSurface of two overlapping polygons answer true. Rung 4
 // (#639) closed it: both types now route here (overrides + IsValidOp arms) --
 // member propagation and the boundary conditions above decide what is
-// decidable, and the interiors-disjoint residue fail-closes naming #641.
+// decidable; rung 5 (#641) decides interiors-disjoint where it can.
 
 using System;
+using System.Collections.Generic;
 
 namespace NetTopologySuite.Geometries.Curves
 {
     /// <summary>
     /// Arc-aware validity verdicts: definite-false detection for the
     /// ISO/IEC 13249-3 clause rules, checked <c>true</c> for clean
-    /// CircularString/CompoundCurve/MultiCurve values, fail-closed only
-    /// where a rule is genuinely undecided (CurvePolygon Desc 12–14 +
-    /// containment, MultiSurface interiors-disjoint —
-    /// NetTopologySuite.Proofs issue #641, the 615-h lane).
+    /// CircularString/CompoundCurve/MultiCurve/CurvePolygon values and for
+    /// MultiSurface values whose element contacts are shared vertices,
+    /// fail-closed only where a decision is genuinely out of reach (the
+    /// 615-h lane, NetTopologySuite.Proofs issue #981).
     /// </summary>
     internal static class CurveValidity
     {
         /// <summary>
-        /// The validity verdict for <paramref name="g"/> (615-h rungs 3–4,
-        /// #634/#639): <c>true</c> for the empty value (always valid,
+        /// The validity verdict for <paramref name="g"/> (615-h rungs 3–5,
+        /// #634/#639/#641): <c>true</c> for the empty value (always valid,
         /// matching <c>IsValidOp</c>); <c>false</c> when an implemented
         /// clause rule is provably violated
         /// (<see cref="TryFindDefiniteInvalidity"/> names the clause). A
@@ -80,13 +92,13 @@ namespace NetTopologySuite.Geometries.Curves
         /// not a constraint) — and so is a clean MultiCurve (§10.1.1
         /// Desc 10, elements well formed, is its complete obligation; both
         /// readings pinned in the research doc's §2). A CurvePolygon with a
-        /// provably non-simple ring (§8.2.1 Desc 2–3) or a ring pair meeting
-        /// in more than one point (Desc 11) is definite <c>false</c>; one
-        /// passing everything throws naming the still-undecided Desc 12–14 +
-        /// containment. A MultiSurface with an element-boundary pair sharing
-        /// a 1-D piece is definite <c>false</c> (§4.2.27); one passing
-        /// everything throws naming the undecided interiors-disjoint
-        /// condition. Never an unchecked <c>true</c>.
+        /// provably non-simple ring (§8.2.1 Desc 2–3), a ring pair meeting in
+        /// more than one point (Desc 11), a misplaced or nested hole
+        /// (Desc 12) or a disconnected interior (Desc 13) is definite
+        /// <c>false</c>, and a clean one is checked <c>true</c> (rung 5). A
+        /// MultiSurface is decided per element and per element pair
+        /// (§10.1.1 Desc 10, §4.2.27); see <see cref="MultiSurfaceIsValid"/>.
+        /// Never an unchecked <c>true</c>.
         /// </summary>
         public static bool IsValid(Geometry g)
         {
@@ -114,21 +126,16 @@ namespace NetTopologySuite.Geometries.Curves
                     // any two rings may intersect in at most one point — a
                     // shared 1-D piece or ≥ 2 distinct contacts is definite
                     // false.
-                    if (RingPairCountRefutes(cp))
+                    var rings = CollectRings(cp);
+                    var pairContact = new Coordinate[rings.Count, rings.Count];
+                    if (RingPairCountRefutes(cp, rings, pairContact))
                         return false;
-                    throw RingPairConditionsPending(cp);
+                    // §8.2.1 Desc 12–14 (615-h rung 5, #641): hole
+                    // containment, no nested holes, connected interior —
+                    // decided by exact point-in-ring over the loci.
+                    return RingConfigurationIsValid(cp, rings, pairContact);
                 case MultiSurface ms:
-                    if (!ElementRingsAllSimple(ms))
-                        return false;
-                    if (AnyElementRingPairRefuted(ms))
-                        return false;
-                    // §4.2.27 (615-h rung 4, #639): element boundaries may
-                    // intersect at a finite number of POINTS — any count of
-                    // point contacts passes, a shared 1-D piece is definite
-                    // false.
-                    if (CrossElementBoundaryOverlap(ms))
-                        return false;
-                    throw InteriorsDisjointPending(ms);
+                    return MultiSurfaceIsValid(ms);
                 default:
                     throw new NotSupportedException(
                         $"Arc-aware IsValid has no verdict path for {g.GeometryType}.");
@@ -159,9 +166,9 @@ namespace NetTopologySuite.Geometries.Curves
         /// rather than letting the caller's pending message claim Desc 11
         /// passed.
         /// </summary>
-        private static bool RingPairCountRefutes(CurvePolygon cp)
+        private static bool RingPairCountRefutes(
+            CurvePolygon cp, List<Curve> rings, Coordinate[,] pairContact)
         {
-            var rings = CollectRings(cp);
             var contacts = new System.Collections.Generic.List<Coordinate>();
             NotSupportedException deferred = null;
             for (int i = 0; i < rings.Count; i++)
@@ -175,6 +182,8 @@ namespace NetTopologySuite.Geometries.Curves
                         return true;
                     if (residue != null)
                         deferred = deferred ?? residue;
+                    if (contacts.Count == 1)
+                        pairContact[i, j] = contacts[0];
                 }
             }
             if (deferred != null)
@@ -183,79 +192,356 @@ namespace NetTopologySuite.Geometries.Curves
         }
 
         /// <summary>
-        /// §8.2.1 Desc 2–3 propagated through a MultiSurface's elements:
-        /// <c>false</c> when a CurvePolygon element has a provably non-simple
-        /// ring (a classically invalid Polygon element is already caught by
-        /// <see cref="TryFindDefiniteInvalidity(Geometry, out string)"/>).
+        /// §8.2.1 Desc 12–14 for a CurvePolygon whose rings are simple and
+        /// pairwise meet in at most one point (615-h rung 5, #641). With
+        /// those two facts the remaining conditions reduce to three exact
+        /// questions, each decided by a sample point per ring:
+        /// <list type="bullet">
+        /// <item>every hole lies inside the exterior ring — a hole minus its
+        /// (at most one) contact is connected and misses the shell, so one
+        /// sample off the shell decides the whole hole (Desc 12: a hole
+        /// outside the shell is not in the closure of the interior);</item>
+        /// <item>no hole lies inside another (Desc 12 again: the inner ring
+        /// would bound nothing);</item>
+        /// <item>the interior is connected (Desc 13): with the above, it is
+        /// disconnected exactly when the touch graph — rings and contact
+        /// points as nodes, one edge per ring through a contact — has a
+        /// cycle (the classical polygon argument; one-point contacts between
+        /// two Jordan curves are touches, never crossings).</item>
+        /// </list>
+        /// Desc 14 (every hole disconnects the exterior) holds for a simple
+        /// hole strictly inside the shell and outside every other hole. A
+        /// clean value is a checked <c>true</c>.
         /// </summary>
-        private static bool ElementRingsAllSimple(MultiSurface ms)
+        private static bool RingConfigurationIsValid(
+            CurvePolygon cp, List<Curve> rings, Coordinate[,] pairContact)
         {
+            var exact = ExactRings(cp, rings);
+            for (int k = 1; k < rings.Count; k++)
+            {
+                if (SideOf(cp, exact[k], exact[0], pairContact[0, k],
+                        $"interior ring {k - 1} against the exterior ring") != CurveContainment.Location.Interior)
+                    return false;
+            }
+            for (int i = 1; i < rings.Count; i++)
+            {
+                for (int j = 1; j < rings.Count; j++)
+                {
+                    if (i == j)
+                        continue;
+                    var contact = pairContact[System.Math.Min(i, j), System.Math.Max(i, j)];
+                    if (SideOf(cp, exact[j], exact[i], contact,
+                            $"interior ring {j - 1} against interior ring {i - 1}") == CurveContainment.Location.Interior)
+                        return false;
+                }
+            }
+            return !TouchGraphHasCycle(cp, rings.Count, pairContact);
+        }
+
+        /// <summary>
+        /// The side of <paramref name="against"/> that the ring
+        /// <paramref name="ring"/> lies on, from its first exact sample not
+        /// on <paramref name="against"/> (Interior or Exterior). A sample ON
+        /// the other ring is skipped only when it is the pair's reported
+        /// contact — any other boundary hit means the double kernel missed a
+        /// contact, and the verdict refuses rather than trusting either side.
+        /// </summary>
+        private static CurveContainment.Location SideOf(
+            Geometry owner, List<CurveContainment.ExactSegment> ring,
+            List<CurveContainment.ExactSegment> against, Coordinate contact, string what)
+        {
+            foreach (var sample in CurveContainment.Samples(ring, false))
+            {
+                var location = CurveContainment.LocateInRing(sample, against);
+                if (location != CurveContainment.Location.Boundary)
+                    return location;
+                if (contact == null || !CurveSimplicity.Matches(sample.ToCoordinate(), contact))
+                    throw ContactDisagreement(owner, what);
+            }
+            throw ContactDisagreement(owner, what);
+        }
+
+        /// <summary>
+        /// §8.2.1 Desc 13 (connected interior): does the bipartite touch
+        /// graph — ring nodes, contact-point nodes, an edge for every ring
+        /// through a contact — contain a cycle? Contact points from
+        /// different ring pairs are identified within the kernel's match
+        /// tolerance. Identification can only ADD cycles, so "no cycle" is
+        /// sound as it stands; a cycle that rests on a non-identical match
+        /// refuses instead of answering a definite <c>false</c>.
+        /// </summary>
+        private static bool TouchGraphHasCycle(CurvePolygon cp, int ringCount, Coordinate[,] pairContact)
+        {
+            var points = new List<Coordinate>();
+            var parent = new List<int>();
+            for (int r = 0; r < ringCount; r++)
+                parent.Add(r);
+            var edges = new HashSet<(int Ring, int Node)>();
+            bool inexactIdentification = false;
+            bool cycle = false;
+            for (int i = 0; i < ringCount; i++)
+            {
+                for (int j = i + 1; j < ringCount; j++)
+                {
+                    var contact = pairContact[i, j];
+                    if (contact == null)
+                        continue;
+                    int node = -1;
+                    for (int p = 0; p < points.Count; p++)
+                    {
+                        if (CurveSimplicity.Matches(contact, points[p]))
+                        {
+                            node = ringCount + p;
+                            if (!contact.Equals2D(points[p]))
+                                inexactIdentification = true;
+                            break;
+                        }
+                    }
+                    if (node < 0)
+                    {
+                        points.Add(contact);
+                        node = parent.Count;
+                        parent.Add(node);
+                    }
+                    foreach (int ring in new[] { i, j })
+                    {
+                        if (!edges.Add((ring, node)))
+                            continue;
+                        int rootRing = Find(parent, ring), rootNode = Find(parent, node);
+                        if (rootRing == rootNode)
+                            cycle = true;
+                        else
+                            parent[rootRing] = rootNode;
+                    }
+                }
+            }
+            if (cycle && inexactIdentification)
+                throw CurvedGeometry.Refused(cp,
+                    "a connected-interior decision (8.2.1 Desc 13) whose touch-graph cycle rests on two ring-pair " +
+                    "contacts identified within tolerance but not bit-identical");
+            return cycle;
+        }
+
+        private static int Find(List<int> parent, int x)
+        {
+            while (parent[x] != x)
+            {
+                parent[x] = parent[parent[x]];
+                x = parent[x];
+            }
+            return x;
+        }
+
+        /// <summary>
+        /// The MultiSurface verdict (615-h rung 5, #641): every element well
+        /// formed (§10.1.1 Desc 10 — the full CurvePolygon verdict since this
+        /// rung), and the interiors of any two elements disjoint with their
+        /// boundaries meeting at most in finitely many points (§4.2.27). An
+        /// all-classical value is exactly a classical MultiPolygon, whose
+        /// validity rule is that same condition — decided by
+        /// <c>IsValidOp</c>. Otherwise each element pair is decided by
+        /// <see cref="ElementPairInteriorsDisjoint"/>; residues are deferred
+        /// behind any definite refutation.
+        /// </summary>
+        private static bool MultiSurfaceIsValid(MultiSurface ms)
+        {
+            var elements = new List<(int Index, Geometry Element)>();
+            bool allClassical = true;
+            NotSupportedException deferred = null;
             for (int e = 0; e < ms.NumGeometries; e++)
             {
-                if (ms.GetGeometryN(e) is CurvePolygon cp && !cp.IsEmpty && !RingsAllSimple(cp))
-                    return false;
+                var element = ms.GetGeometryN(e);
+                if (element.IsEmpty)
+                    continue;
+                elements.Add((e, element));
+                if (element is CurvePolygon cp)
+                {
+                    allClassical = false;
+                    try
+                    {
+                        if (!IsValid(cp))
+                            return false;
+                    }
+                    catch (NotSupportedException residue)
+                    {
+                        deferred = deferred ?? residue;
+                    }
+                }
+                // A classical Polygon element already passed classical
+                // IsValidOp in TryFindDefiniteInvalidity.
+            }
+
+            if (allClassical)
+            {
+                var polygons = new Polygon[elements.Count];
+                for (int i = 0; i < elements.Count; i++)
+                    polygons[i] = (Polygon)elements[i].Element;
+                return ms.Factory.CreateMultiPolygon(polygons).IsValid;
+            }
+
+            for (int a = 0; a < elements.Count; a++)
+            {
+                for (int b = a + 1; b < elements.Count; b++)
+                {
+                    bool? disjoint = ElementPairInteriorsDisjoint(
+                        ms, elements[a], elements[b], out var residue);
+                    if (disjoint == false)
+                        return false;
+                    if (residue != null)
+                        deferred = deferred ?? residue;
+                }
+            }
+            if (deferred != null)
+                throw deferred;
+            return true;
+        }
+
+        /// <summary>
+        /// §4.2.27 for one element pair (615-h rung 5, #641): <c>false</c>
+        /// when the boundaries provably share a 1-D piece, or when an exact
+        /// sample on one element's boundary lies strictly inside the other
+        /// (sound with no contact information at all). <c>true</c> when the
+        /// contact set is complete, every contact is a vertex SHARED by both
+        /// boundaries, and one exact sample strictly inside every boundary
+        /// segment lies outside the other element: the contacts then cut the
+        /// boundaries into whole-segment pieces, each piece lies entirely on
+        /// one side of the other element, and if no boundary piece of either
+        /// enters the other's interior the interiors are disjoint (a bounded
+        /// open overlap would need a boundary of its own). <c>null</c> with
+        /// <paramref name="residue"/> otherwise.
+        /// </summary>
+        private static bool? ElementPairInteriorsDisjoint(
+            MultiSurface ms, (int Index, Geometry Element) a, (int Index, Geometry Element) b,
+            out NotSupportedException residue)
+        {
+            residue = null;
+            var ringsA = CollectRings(a.Element);
+            var ringsB = CollectRings(b.Element);
+            var contacts = new List<Coordinate>();
+            var pair = new List<Coordinate>();
+            foreach (var ringA in ringsA)
+            {
+                foreach (var ringB in ringsB)
+                {
+                    pair.Clear();
+                    var pairResidue = CurveSimplicity.RingPairContacts(ms, ringA, ringB, pair, out bool overlap);
+                    // §4.2.27: boundaries may meet in a finite number of
+                    // POINTS — a shared 1-D piece is definite false.
+                    if (overlap)
+                        return false;
+                    residue = residue ?? pairResidue;
+                    foreach (var contact in pair)
+                    {
+                        if (!contacts.Exists(c => CurveSimplicity.Matches(contact, c)))
+                            contacts.Add(contact);
+                    }
+                }
+            }
+
+            var exactA = ExactRings(ms, ringsA);
+            var exactB = ExactRings(ms, ringsB);
+            if (AnySampleInside(exactA, exactB) || AnySampleInside(exactB, exactA))
+                return false;
+            if (residue != null)
+                return null;
+
+            var verticesA = Vertices(ms, ringsA);
+            var verticesB = Vertices(ms, ringsB);
+            foreach (var contact in contacts)
+            {
+                if (!IsSharedVertex(contact, verticesA, verticesB))
+                {
+                    residue = CurvedGeometry.Refused(ms,
+                        $"an interiors-disjoint decision (4.2.27) for elements {a.Index} and {b.Index}, whose " +
+                        $"boundaries touch at ({contact.X}, {contact.Y}) — not a vertex shared by both, so the " +
+                        "boundary pieces between contacts have no exact sample point yet (the 615-h lane, " +
+                        "NetTopologySuite.Proofs issue #981)");
+                    return null;
+                }
+            }
+            if (!AllSegmentSamplesOutside(exactA, exactB) || !AllSegmentSamplesOutside(exactB, exactA))
+            {
+                residue = CurvedGeometry.Refused(ms,
+                    $"an interiors-disjoint decision (4.2.27) for elements {a.Index} and {b.Index}: the exact " +
+                    "location found a boundary contact the double-precision contact kernel did not report");
+                return null;
+            }
+            return true;
+        }
+
+        /// <summary>Does any exact sample of <paramref name="rings"/> lie strictly inside the surface <paramref name="surface"/>?</summary>
+        private static bool AnySampleInside(
+            List<List<CurveContainment.ExactSegment>> rings, List<List<CurveContainment.ExactSegment>> surface)
+        {
+            foreach (var ring in rings)
+            {
+                foreach (var sample in CurveContainment.Samples(ring, false))
+                {
+                    if (CurveContainment.LocateInSurface(sample, surface) == CurveContainment.Location.Interior)
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Does the segment-interior sample of every segment of <paramref name="rings"/> lie outside <paramref name="surface"/>?</summary>
+        private static bool AllSegmentSamplesOutside(
+            List<List<CurveContainment.ExactSegment>> rings, List<List<CurveContainment.ExactSegment>> surface)
+        {
+            foreach (var ring in rings)
+            {
+                foreach (var sample in CurveContainment.Samples(ring, true))
+                {
+                    if (CurveContainment.LocateInSurface(sample, surface) != CurveContainment.Location.Exterior)
+                        return false;
+                }
             }
             return true;
         }
 
         /// <summary>
-        /// §8.2.1 Desc 11 propagated through a MultiSurface's elements: a
-        /// CurvePolygon element with a refuted ring pair makes the whole
-        /// value definite <c>false</c>.
+        /// Is <paramref name="contact"/> (a kernel-computed point) a vertex
+        /// present, bit-identical, in both boundaries?
         /// </summary>
-        private static bool AnyElementRingPairRefuted(MultiSurface ms)
+        private static bool IsSharedVertex(Coordinate contact, List<Coordinate> verticesA, List<Coordinate> verticesB)
         {
-            for (int e = 0; e < ms.NumGeometries; e++)
+            foreach (var vertex in verticesA)
             {
-                if (ms.GetGeometryN(e) is CurvePolygon cp && !cp.IsEmpty && RingPairCountRefutes(cp))
+                if (CurveSimplicity.Matches(contact, vertex) && verticesB.Exists(v => v.Equals2D(vertex)))
                     return true;
             }
             return false;
         }
 
-        /// <summary>
-        /// §4.2.27 (615-h rung 4, #639): <c>true</c> when the boundaries of
-        /// two DIFFERENT elements provably share a 1-D piece. Point contacts
-        /// — however many — do not refute here: the clause permits "a finite
-        /// number of points", unlike the per-polygon Desc 11 count.
-        /// </summary>
-        private static bool CrossElementBoundaryOverlap(MultiSurface ms)
+        private static List<Coordinate> Vertices(Geometry owner, List<Curve> rings)
         {
-            var elementRings = new System.Collections.Generic.List<System.Collections.Generic.List<Curve>>();
-            for (int e = 0; e < ms.NumGeometries; e++)
+            var vertices = new List<Coordinate>();
+            foreach (var ring in rings)
             {
-                var element = ms.GetGeometryN(e);
-                if (element.IsEmpty) continue;
-                elementRings.Add(CollectRings(element));
+                foreach (var segment in CurveSimplicity.BuildChain(owner, ring))
+                    vertices.Add(segment.Start);
             }
-            var contacts = new System.Collections.Generic.List<Coordinate>();
-            NotSupportedException deferred = null;
-            for (int a = 0; a < elementRings.Count; a++)
+            return vertices;
+        }
+
+        /// <summary>
+        /// The exact form of every ring; refuses when the exact arc/chord
+        /// classification of some segment disagrees with the double
+        /// kernel's (whose contact verdicts the caller already holds).
+        /// </summary>
+        private static List<List<CurveContainment.ExactSegment>> ExactRings(Geometry owner, List<Curve> rings)
+        {
+            var exact = new List<List<CurveContainment.ExactSegment>>(rings.Count);
+            foreach (var ring in rings)
             {
-                for (int b = a + 1; b < elementRings.Count; b++)
-                {
-                    foreach (var ringA in elementRings[a])
-                    {
-                        foreach (var ringB in elementRings[b])
-                        {
-                            contacts.Clear();
-                            var residue = CurveSimplicity.RingPairContacts(
-                                ms, ringA, ringB, contacts, out bool overlap);
-                            if (overlap)
-                                return true;
-                            if (residue != null)
-                                deferred = deferred ?? residue;
-                        }
-                    }
-                }
+                var exactRing = CurveContainment.TryBuildRing(CurveSimplicity.BuildChain(owner, ring));
+                if (exactRing == null)
+                    throw CurvedGeometry.Refused(owner,
+                        "a containment decision for a ring with a control triple the double kernel classifies " +
+                        "differently from exact arithmetic (arc vs. collinear chord)");
+                exact.Add(exactRing);
             }
-            // With a residue and no overlap found, "no element-boundary pair
-            // shares a 1-D piece" cannot be certified (a near-cocircular pair
-            // could hide exactly that) — throw the residue instead of letting
-            // the pending message overclaim.
-            if (deferred != null)
-                throw deferred;
-            return false;
+            return exact;
         }
 
         /// <summary>
@@ -263,7 +549,7 @@ namespace NetTopologySuite.Geometries.Curves
         /// Polygon — both ring types are <see cref="Curve"/>s on this
         /// branch).
         /// </summary>
-        private static System.Collections.Generic.List<Curve> CollectRings(Geometry surface)
+        private static List<Curve> CollectRings(Geometry surface)
         {
             var rings = new System.Collections.Generic.List<Curve>();
             switch (surface)
@@ -455,43 +741,15 @@ namespace NetTopologySuite.Geometries.Curves
         }
 
         /// <summary>
-        /// The CurvePolygon fail-closed signal: every implemented rule
-        /// passes, all rings are provably simple, and (since rung 4, #639)
-        /// no ring pair meets in more than one point — but the remaining
-        /// polygon conditions (§8.2.1 Desc 12–14: no spikes or cuts,
-        /// connected interior — and hole-inside-shell containment) need
-        /// arc-aware point-in-ring, still pending — the 615-h lane,
-        /// continued at issue #641 in NetTopologySuite.Proofs. Returning
-        /// <c>true</c> without them would be an unchecked claim.
+        /// The refusal when exact location finds a ring point ON another ring
+        /// that is not the contact the double kernel reported for the pair —
+        /// the two machineries disagree, so neither verdict is trusted.
         /// </summary>
-        private static NotSupportedException RingPairConditionsPending(CurvePolygon cp)
+        private static NotSupportedException ContactDisagreement(Geometry owner, string what)
         {
-            return new NotSupportedException(
-                $"Arc-aware IsValid for {cp.GeometryType} is partial: this value passes the implemented " +
-                "ISO/IEC 13249-3 clause checks, every ring is provably simple, and no ring pair meets in " +
-                "more than one point (8.2.1 Desc 11), but the remaining conditions (8.2.1 Desc 12-14: " +
-                "no spikes/cuts, connected interior - plus hole-inside-shell containment) need arc-aware " +
-                "point-in-ring and are still pending (the 615-h lane, NetTopologySuite.Proofs issue #641). " +
-                "A checked 'true' is not possible yet; an unchecked 'true' is never returned.");
-        }
-
-        /// <summary>
-        /// The MultiSurface fail-closed signal: elements are individually
-        /// unrefuted and no element-boundary pair shares a 1-D piece, but
-        /// §4.2.27's "the interiors of any two ST_Surface values … shall not
-        /// intersect" needs the same containment machinery as the
-        /// CurvePolygon conditions — the 615-h lane, NetTopologySuite.Proofs
-        /// issue #641.
-        /// </summary>
-        private static NotSupportedException InteriorsDisjointPending(MultiSurface ms)
-        {
-            return new NotSupportedException(
-                $"Arc-aware IsValid for {ms.GeometryType} is partial: this value passes the implemented " +
-                "ISO/IEC 13249-3 clause checks and no element-boundary pair shares a 1-D piece (4.2.27 " +
-                "permits boundary contact at a finite number of points), but whether the element INTERIORS " +
-                "are pairwise disjoint (4.2.27) needs arc-aware containment and is still pending (the " +
-                "615-h lane, NetTopologySuite.Proofs issue #641). A checked 'true' is not possible yet; " +
-                "an unchecked 'true' is never returned.");
+            return CurvedGeometry.Refused(owner,
+                $"a containment decision for {what}: the exact location found a boundary contact the " +
+                "double-precision contact kernel did not report");
         }
     }
 }

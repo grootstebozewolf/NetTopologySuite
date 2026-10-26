@@ -34,8 +34,10 @@
 // (start == end — Desc-6-invalid, its locus is not a decidable arc), a
 // non-finite control coordinate (no locus at all; IsValid is definite-false
 // there), the nearly-cocircular ambiguity band, and the large-circumradius
-// conditioning guard (see CircularArcGeometry.SegmentPairContacts) — the
-// exactness upgrades are the 615-h continuation, issue #641.
+// conditioning guard (see CircularArcGeometry.SegmentPairContacts). Since
+// rung 5 (#641) the tangency and near-cocircular bands are decided exactly
+// except for an unanchored exact crossing PAIR inside them — that residue and the
+// conditioning guard are the 615-h continuation, issue #981.
 
 using System;
 using System.Collections.Generic;
@@ -58,7 +60,7 @@ namespace NetTopologySuite.Geometries.Curves
         /// first point makes the orientation cross exactly zero, so the pair
         /// kernel takes the Desc-8b chord path with no floating-point doubt.
         /// </summary>
-        private readonly struct ChainSegment
+        internal readonly struct ChainSegment
         {
             public readonly Coordinate Start;
             public readonly Coordinate Mid;
@@ -110,6 +112,7 @@ namespace NetTopologySuite.Geometries.Curves
         {
             var chains = new List<List<ChainSegment>>();
             var closed = new List<bool>();
+            NotSupportedException deferred = null;
             for (int m = 0; m < mc.NumGeometries; m++)
             {
                 var member = (Curve)mc.GetGeometryN(m);
@@ -118,16 +121,35 @@ namespace NetTopologySuite.Geometries.Curves
                 var chain = new List<ChainSegment>();
                 // The member is the owner here: chain-build and
                 // member-simplicity residues are member-local (the review
-                // flagged the mixed naming).
-                AppendCurve(member, member, chain);
-                if (!IsSimpleChain(member, chain, member.IsClosed))
-                    return false;
+                // flagged the mixed naming). A member residue is DEFERRED
+                // (rung 5, #641): a cross-member refutation found later is
+                // sound regardless, so it must not be pre-empted by a throw.
+                // A member whose chain could not be built takes no part in
+                // the cross-member walk; the deferred residue still blocks
+                // any would-be true.
+                try
+                {
+                    AppendCurve(member, member, chain);
+                }
+                catch (NotSupportedException residue)
+                {
+                    deferred = deferred ?? residue;
+                    continue;
+                }
+                try
+                {
+                    if (!IsSimpleChain(member, chain, member.IsClosed))
+                        return false;
+                }
+                catch (NotSupportedException residue)
+                {
+                    deferred = deferred ?? residue;
+                }
                 chains.Add(chain);
                 closed.Add(member.IsClosed);
             }
 
             var contacts = new List<Coordinate>();
-            NotSupportedException deferred = null;
             for (int a = 0; a < chains.Count; a++)
             {
                 for (int b = a + 1; b < chains.Count; b++)
@@ -275,6 +297,19 @@ namespace NetTopologySuite.Geometries.Curves
         }
 
         /// <summary>
+        /// The segment chain of one ring or curve (615-h rung 5, #641 — the
+        /// containment walk locates points against it): arcs keep their
+        /// control triples, chords are encoded (a, a, b). Fail-closed on
+        /// degenerate segments and non-finite coordinates, as for simplicity.
+        /// </summary>
+        internal static List<ChainSegment> BuildChain(Geometry owner, Curve curve)
+        {
+            var chain = new List<ChainSegment>();
+            AppendCurve(owner, curve, chain);
+            return chain;
+        }
+
+        /// <summary>
         /// Appends <paramref name="curve"/>'s segments to
         /// <paramref name="chain"/>: arcs keep their control triples,
         /// LineStrings contribute Desc-8b chords, compounds concatenate their
@@ -396,22 +431,21 @@ namespace NetTopologySuite.Geometries.Curves
             {
                 case CircularArcGeometry.SegmentPairResult.AmbiguousCocircular:
                     return CurvedGeometry.Refused(owner,
-                        $"a contact decision for nearly cocircular {what} — their circumcircles are too close " +
-                        "to distinguish from one circle at double precision, but not exactly equal; refusing to " +
-                        "guess between interval overlap and radical-line intersection (the 615-h lane, " +
-                        "NetTopologySuite.Proofs issue #641)");
+                        $"a contact decision for nearly cocircular {what} — their circumcircles are distinct " +
+                        "(exact arithmetic) but too close to place their two crossing points at double precision " +
+                        "(the 615-h lane, NetTopologySuite.Proofs issue #981)");
                 case CircularArcGeometry.SegmentPairResult.IllConditioned:
                     return CurvedGeometry.Refused(owner,
                         $"a contact decision for {what} — a circumradius is too large relative to the " +
                         "coordinate scale for a double-precision contact decision (the r² error would swamp " +
                         "the match tolerance); exact arithmetic is the way to widen this (the 615-h lane, " +
-                        "NetTopologySuite.Proofs issue #641)");
+                        "NetTopologySuite.Proofs issue #981)");
                 case CircularArcGeometry.SegmentPairResult.AmbiguousTangency:
                     return CurvedGeometry.Refused(owner,
-                        $"a contact decision for nearly tangent {what} — the intersection discriminant is " +
-                        "within its own double-precision error band, so one touch point cannot be told from " +
-                        "a close crossing pair or a near-miss (rung-4 review-demonstrated); exact arithmetic " +
-                        "is the way to widen this (the 615-h lane, NetTopologySuite.Proofs issue #641)");
+                        $"a contact decision for nearly tangent {what} — the exact discriminant shows a crossing " +
+                        "PAIR inside the double-precision tangency band, and no control point anchors it, so the two " +
+                        "irrational crossings cannot be placed on or off the arcs (the 615-h lane, " +
+                        "NetTopologySuite.Proofs issue #981)");
                 default:
                     return null;
             }
@@ -473,7 +507,7 @@ namespace NetTopologySuite.Geometries.Curves
         /// radical-line / quadratic step, while permitted vertices are exact
         /// input coordinates.
         /// </summary>
-        private static bool Matches(Coordinate contact, Coordinate vertex)
+        internal static bool Matches(Coordinate contact, Coordinate vertex)
         {
             double scale = 1 + System.Math.Sqrt(vertex.X * vertex.X + vertex.Y * vertex.Y);
             return contact.Distance(vertex) <= CircularArcGeometry.RelativeTolerance * scale;
